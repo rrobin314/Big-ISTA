@@ -19,9 +19,21 @@ typedef struct ISTAinstance {
 
 } ISTAinstance;
 
+// "Constructor" for ISTAinstance
+extern ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
+				      int acceleration, char regressionType, float* xvalue, float step );
+
+extern void ISTAinstance_free(ISTAinstance* instance);
+
 extern void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
 		      int acceleration, char regressionType, float* xvalue, 
 		      int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF);
+
+// This version of ISTAsolve does not allocate any memory
+extern void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
+
+extern float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
+				  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
 
 extern void ISTAbacktrack(ISTAinstance* instance);
 

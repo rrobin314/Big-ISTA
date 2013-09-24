@@ -4,6 +4,61 @@
 #include<cblas.h>
 #include"istalib.h"
 
+ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
+			       int acceleration, char regressionType, float* xvalue, float step )
+{
+  // This method initializes an ISTAinstance object
+  ISTAinstance* instance = malloc(sizeof(ISTAinstance));
+  if ( instance==NULL )
+    printf("Unable to allocate memory\n");
+
+  instance->A = A;
+  instance->ldA = ldA;
+  instance->rdA = rdA;
+  instance->b = b;
+  instance->lambda = lambda;
+  instance->gamma = gamma;
+  instance->acceleration = acceleration;
+  instance->regressionType = regressionType;
+  instance->xcurrent = xvalue;
+
+  //Allocate memory for values used during the calculation
+  instance->stepsize = malloc(sizeof(float));
+  *(instance->stepsize) = step;
+
+  instance->xprevious = malloc(rdA*sizeof(float));
+  if ( instance->xprevious==NULL )
+    printf("Unable to allocate memory\n");
+
+  instance->searchPoint = malloc(rdA*sizeof(float));
+  if ( instance->searchPoint==NULL )
+    printf("Unable to allocate memory\n");
+  cblas_scopy(rdA, instance->xcurrent, 1, instance->searchPoint, 1);
+
+  instance->gradvalue = malloc(rdA*sizeof(float));
+  instance->eta = malloc((ldA+rdA)*sizeof(float));
+  if ( instance->gradvalue==NULL || instance->eta==NULL )
+    printf("Unable to allocate memory\n");
+
+  return instance;
+}
+
+
+void ISTAinstance_free(ISTAinstance* instance)
+{
+  // Frees an entire ISTAinstance pointer
+  free(instance->eta); 
+  free(instance->gradvalue); 
+  free(instance->searchPoint); 
+  free(instance->xprevious);
+  free(instance->xcurrent);
+  free(instance->stepsize); 
+  free(instance-> b);
+  free(instance-> A);
+  free(instance);
+}
+
+
 
 void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
 	       int acceleration, char regressionType, float* xvalue, 
@@ -89,6 +144,76 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
 									       
 }
 
+void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
+{
+  // This version of ISTAsolve solve does not allocate any memory
+
+  //Initialize stop values:
+  int iter=0;
+  float xdiff=1;
+  float funcdiff=1;
+
+  while(iter < MAX_ITER && xdiff > MIN_XDIFF && funcdiff > MIN_FUNCDIFF)
+    {
+      cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->xprevious, 1); //set xprevious to xcurrent
+
+      //RUN BACKTRACKING ROUTINE
+      ISTAbacktrack( instance );
+
+      //UPDATE TERMINATING VALUES
+      cblas_saxpy(instance->rdA, -1.0, instance->xcurrent, 1, instance->xprevious, 1); //xprevious now holds "xprevious - xcurrent"
+      xdiff = cblas_snrm2(instance->rdA, instance->xprevious, 1);
+
+      funcdiff = ISTAregress_func(instance->searchPoint, instance) - ISTAregress_func(instance->xcurrent, instance);
+      funcdiff += instance->lambda * cblas_sasum(instance->rdA, instance->searchPoint, 1);
+      funcdiff -= instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1);
+
+      //UPDATE SEARCHPOINT
+      if( instance->acceleration ) //FISTA searchpoint
+	{
+	  cblas_sscal(instance->rdA, - iter / (float)(iter + 2), instance->xprevious, 1);
+	  cblas_saxpy(instance->rdA, 1.0, instance->xcurrent, 1, instance->xprevious, 1); //now xprevious equals what we want
+	  cblas_scopy(instance->rdA, instance->xprevious, 1, instance->searchPoint, 1);
+	}
+      else //regular ISTA searchpoint
+	{
+	  cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->searchPoint, 1);
+	}
+
+      //UPDATE ITERATOR
+      iter++;
+    }
+
+}
+
+float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
+			   int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
+{
+  // lambdas is an array of floats, ordered from largest to smallest, giving the lambdas we will solve for.
+  // for each lambda in lambdas, we run ISTA and return the final xvalue
+
+  float** values = malloc( num_lambdas*sizeof(float*) );
+  if( values==NULL )
+    printf("Unable to allocate memory");
+
+  int i;
+
+  for( i=0; i < num_lambdas; i++)
+    {
+      instance->lambda = lambdas[i];
+
+      // Solve with new lambda value
+      ISTAsolve_lite( instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF );
+
+      // record solution in values[i]
+      values[i] = malloc( (instance->rdA) * sizeof(float) );
+      if ( values[i] == NULL )
+	printf("Unable to allocate memory");
+      cblas_scopy(instance->rdA, instance->xcurrent, 1, values[i], 1); 
+    }
+
+  return values;
+}
 
 void ISTAbacktrack(ISTAinstance* instance)
 {
