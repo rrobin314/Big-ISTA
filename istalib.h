@@ -57,12 +57,23 @@ extern float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance*
 // Updates xcurrent to the gradient step from searchPoint indicated by stepsize
 // Updates eta to xcurrent - searchPoint
 // If additional loops are necessary, updates stepsize to gamma*stepsize 
+
+extern float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds, 
+			  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
+
 extern void ISTAbacktrack(ISTAinstance* instance);
+
+extern void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds);
 
 // Calculates gradient of ISTAregress_func at searchPoint and stores it in gradvalue
 extern void ISTAgrad(ISTAinstance* instance);
 
+extern void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds);
+
 // Calculates the appropriate regression function for either linear or logistic regression
 extern float ISTAregress_func(float* xvalue, ISTAinstance* instance);
+
+// Calculates the regression function value using only the rows corresponding to currentFold in folds
+extern float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold);
 
 extern void soft_threshold(float* xvalue, int xlength, float threshold);

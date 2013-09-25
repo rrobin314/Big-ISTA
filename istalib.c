@@ -109,7 +109,7 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
       cblas_scopy(rdA, instance->xcurrent, 1, instance->xprevious, 1); //set xprevious to xcurrent
 
       //RUN BACKTRACKING ROUTINE
-      ISTAbacktrack( instance );
+       ISTAbacktrack( instance );
 
       //UPDATE TERMINATING VALUES
       cblas_saxpy(rdA, -1.0, instance->xcurrent, 1, instance->xprevious, 1); //xprevious now holds "xprevious - xcurrent"
@@ -215,6 +215,72 @@ float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instan
   return values;
 }
 
+float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds, 
+		   int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
+{
+  float meanTotalError = 0.0;
+  int i, j, iter, currentFold;
+  float xdiff, funcdiff, foldError;
+
+  // for each fold number, we run ISTA on the rows not included in that fold
+  for( currentFold=0; currentFold < num_folds; currentFold++)
+    {
+      
+      iter=0;
+      xdiff = 1.0;
+      funcdiff = 1.0;
+      foldError = 0.0;
+
+      // reset xcurrent to 0 vector
+      cblas_sscal(instance->rdA, 0.0, instance->xcurrent, 1);
+
+      // Now run the usual ISTA solve code, but calling the crossval specific functions
+      while(iter < MAX_ITER && xdiff > MIN_XDIFF && funcdiff > MIN_FUNCDIFF)
+	{
+	  cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->xprevious, 1); //set xprevious to xcurrent
+	  
+	  //RUN BACKTRACKING ROUTINE
+	  ISTAbacktrack_cv( instance, currentFold, folds);
+	  
+	  //UPDATE TERMINATING VALUES
+	  cblas_saxpy(instance->rdA, -1.0, instance->xcurrent, 1, instance->xprevious, 1); //xprevious now holds "xprevious - xcurrent"
+	  xdiff = cblas_snrm2(instance->rdA, instance->xprevious, 1);
+	  
+	  funcdiff = ISTAregress_func_cv(instance->searchPoint, instance, currentFold, folds, 0)
+	              - ISTAregress_func_cv(instance->xcurrent, instance, currentFold, folds, 0);
+	  funcdiff += instance->lambda * cblas_sasum(instance->rdA, instance->searchPoint, 1);
+	  funcdiff -= instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1);
+	  
+	  //UPDATE SEARCHPOINT
+	  if( instance->acceleration ) //FISTA searchpoint
+	     {
+	       cblas_sscal(instance->rdA, - iter / (float)(iter + 2), instance->xprevious, 1);
+	       cblas_saxpy(instance->rdA, 1.0, instance->xcurrent, 1, instance->xprevious, 1); //now xprevious equals what we want
+	       cblas_scopy(instance->rdA, instance->xprevious, 1, instance->searchPoint, 1);
+	     }
+	  else //regular ISTA searchpoint
+	    {
+	      cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->searchPoint, 1);
+	    }
+	  
+	  //UPDATE ITERATOR
+	  iter++;
+	} 
+       
+
+      // Now calculate the test error on the rows in the fold
+      foldError = ISTAregress_func_cv(instance->xcurrent, instance, currentFold, folds, 1);
+      
+      // Update meanTotalError
+      meanTotalError += foldError;
+
+    }
+
+  meanTotalError = meanTotalError / num_folds;
+  return meanTotalError;
+}
+
+
 void ISTAbacktrack(ISTAinstance* instance)
 {
   /* initialize */
@@ -238,6 +304,43 @@ void ISTAbacktrack(ISTAinstance* instance)
     /*calculate difference that, when negative, guarantees the objective function decreases */
     difference = ISTAregress_func(instance->xcurrent, instance) - 
 	         ISTAregress_func(instance->searchPoint, instance);
+    cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->eta, 1);
+    cblas_saxpy(instance->rdA, -1.0, instance->searchPoint, 1, instance->eta, 1); //eta now holds "xcurrent - searchpoint"
+    difference -= cblas_sdot(instance->rdA, instance->eta, 1, instance->gradvalue, 1);
+    difference -= cblas_sdot(instance->rdA, instance->eta, 1, instance->eta, 1) / (2 * (*(instance->stepsize)) );
+
+    numTrials++;
+
+  } while(numTrials < 100 && difference > 0);
+  
+  if(numTrials == 100)
+    printf("backtracking failed\n");
+
+}
+
+void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds)
+{
+  /* initialize */
+  int i;
+  int numTrials = 0;
+  float difference;
+
+  /* calculate gradient at current searchPoint */
+  ISTAgrad_cv(instance, currentFold, folds);
+  
+  do
+  {
+    if(numTrials > 0) /*dont update stepsize the first time through */
+      *(instance->stepsize) *= instance->gamma;
+
+    /*update xcurrent = soft(  searchPoint - stepsize*gradvalue , lambda*stepsize )  */
+    cblas_scopy(instance->rdA, instance->searchPoint, 1, instance->xcurrent, 1);
+    cblas_saxpy(instance->rdA, -(*(instance->stepsize)), instance->gradvalue, 1, instance->xcurrent, 1);
+    soft_threshold(instance->xcurrent, instance->rdA, instance->lambda * (*(instance->stepsize)));
+
+    /*calculate difference that, when negative, guarantees the objective function decreases */
+    difference = ISTAregress_func_cv(instance->xcurrent, instance, currentFold, folds, 0) - 
+	         ISTAregress_func_cv(instance->searchPoint, instance, currentFold, folds, 0);
     cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->eta, 1);
     cblas_saxpy(instance->rdA, -1.0, instance->searchPoint, 1, instance->eta, 1); //eta now holds "xcurrent - searchpoint"
     difference -= cblas_sdot(instance->rdA, instance->eta, 1, instance->gradvalue, 1);
@@ -287,6 +390,51 @@ void ISTAgrad(ISTAinstance* instance)
 
 }
 
+void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds)
+{
+  // THIS FUNCTION CALCULATES THE GRADIENT OF THE SMOOTH FUNCTION ISTAregress_func
+  // AT THE POINT "searchPoint" and stores it in "gradvalue" ONLY USING THE ROWS
+  // OF A AND b CORRESPONDING TO THOSE NOT IN THE CURRENT FOLD
+
+  int i;
+  
+  switch ( instance->regressionType )
+    {
+    case 'l': /*Here we calculate the gradient: 2*A'*(A*searchPoint - b)  */
+      cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
+		  instance->searchPoint, 1, 0.0, instance->eta, 1);
+      cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*searchPoint - b
+
+      // kill those entries of eta that lie in the fold (test set)
+      for(i=0; i < instance->ldA; i++)
+	{
+	  if(folds[i] == currentFold)
+	    instance->eta[i] = 0.0;
+	}
+
+      cblas_sgemv(CblasRowMajor, CblasTrans, instance->ldA, instance->rdA, 2.0, instance->A, instance->rdA,
+		  instance->eta, 1, 0.0, instance->gradvalue, 1);
+      break;
+
+    case 'o': /*Here we calculate the gradient:A'*(p(A*searchPoint) - b) where p is the logistic function */
+      cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
+		  instance->searchPoint, 1, 0.0, instance->eta, 1);
+      for(i=0; i < instance->ldA; i++)
+	{
+	  if(folds[i] == currentFold)
+	    instance->eta[i] = 0.0;
+	  else
+	    instance->eta[i] = 1 / (1 + exp( -(instance->eta[i]) ) ) - instance->b[i];
+	}
+
+      cblas_sgemv(CblasRowMajor, CblasTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA,
+		  instance->eta, 1, 0.0, instance->gradvalue, 1);
+      break;
+
+    }
+
+}
+
 float ISTAregress_func(float* xvalue, ISTAinstance* instance)
 {
   //THIS FUNCTION REPRESENTS THE SMOOTH FUNCTION THAT WE ARE TRYING TO OPTIMIZE
@@ -311,6 +459,45 @@ float ISTAregress_func(float* xvalue, ISTAinstance* instance)
       for(i=0; i < instance->ldA; i++)
 	{
 	  value += log( 1 + exp( instance->eta[i] )) - instance->eta[i] * instance->b[i];
+	}
+      break;
+    }
+      
+  return value;
+}
+
+float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold)
+{
+  // If insideFold==1, then we only consider those rows inside the fold
+  // If insideFold==0, then we consider those rows outside the fold
+
+  int j;
+  float value = 0;
+
+  switch (instance->regressionType) 
+    {
+    case 'l': /*In this case, the regression function is ||A*xvalue - b||^2 */
+      cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
+		  xvalue, 1, 0.0, instance->eta, 1);
+      cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*xvalue - b
+
+      // Now kill all elements of eta that we don't want
+      for(j=0; j < instance->ldA; j++)
+	{
+	  if( (folds[j] != currentFold && insideFold == 1) || (folds[j] == currentFold && insideFold == 0) )
+	    instance->eta[j] = 0.0;
+	}
+
+      value = pow( cblas_snrm2(instance->ldA, instance->eta, 1 ), 2);
+      break;
+
+    case 'o': /*Regression function: sum log(1+ e^(A_i * x)) - A_i * x * b_i */
+      cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
+		  xvalue, 1, 0.0, instance->eta, 1);
+      for(j=0; j < instance->ldA; j++)
+	{
+	  if( (folds[j] == currentFold && insideFold == 1) || (folds[j] != currentFold && insideFold == 0) )
+	    value += log( 1 + exp( instance->eta[j] )) - instance->eta[j] * instance->b[j];
 	}
       break;
     }
