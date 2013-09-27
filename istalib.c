@@ -231,6 +231,15 @@ float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds,
       funcdiff = 1.0;
       foldError = 0.0;
 
+      int numRowsInFold = 0;
+      for(i=0; i < instance->ldA; i++)
+	{
+	  if(currentFold == folds[i])
+	    numRowsInFold++;
+	}
+      if(numRowsInFold == 0)
+	printf("no rows in this folds!");
+
       // reset xcurrent to 0 vector
       cblas_sscal(instance->rdA, 0.0, instance->xcurrent, 1);
 
@@ -268,8 +277,9 @@ float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds,
 	} 
        
 
-      // Now calculate the test error on the rows in the fold
-      foldError = ISTAregress_func_cv(instance->xcurrent, instance, currentFold, folds, 1);
+      // Now calculate the average test error on the rows in the fold
+      if(numRowsInFold != 0)
+	foldError = ISTAregress_func_cv(instance->xcurrent, instance, currentFold, folds, 1) / numRowsInFold;
       
       // Update meanTotalError
       meanTotalError += foldError;

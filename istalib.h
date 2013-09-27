@@ -51,23 +51,31 @@ extern void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF
 extern float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
 				  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
 
+// Cross validation routine.
+// folds is an integer array of length ldA with values from 0 to num_folds - 1
+// that determines which rows are in which fold.
+// Then for each fold, the code runs ISTA on the rows NOT in that fold and 
+// gets a solution "x".  Then it calculates the average value of the regression function at "x"
+// for the rows in the fold.  This is the error for that fold.
+// The final error is the average of the fold errors.
+extern float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds, 
+			  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
+
 // Backtracking routine to determine how big of a gradient step to take during ISTA.
 // Does the following updates:
 // Updates gradvalue to that of current searchPoint
 // Updates xcurrent to the gradient step from searchPoint indicated by stepsize
 // Updates eta to xcurrent - searchPoint
 // If additional loops are necessary, updates stepsize to gamma*stepsize 
-
-extern float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds, 
-			  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
-
 extern void ISTAbacktrack(ISTAinstance* instance);
 
+// Version of backtracking for cross validation
 extern void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds);
 
 // Calculates gradient of ISTAregress_func at searchPoint and stores it in gradvalue
 extern void ISTAgrad(ISTAinstance* instance);
 
+// Version of gradient method for cross validation
 extern void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds);
 
 // Calculates the appropriate regression function for either linear or logistic regression
