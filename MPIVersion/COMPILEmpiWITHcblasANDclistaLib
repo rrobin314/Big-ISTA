@@ -1,0 +1,6 @@
+#!/bin/tcsh
+# #1 is the source code file, minus the '.c'
+
+mpicc -Wall -c $argv[1].c
+mpicc -Wall -c clistaLib.c
+mpicc -o $argv[1] -I /usr/local/atlas-3.9.23/include/ -L /usr/local/atlas-3.9.23/lib/ -latlas -lcblas $argv[1].o clistaLib.o
