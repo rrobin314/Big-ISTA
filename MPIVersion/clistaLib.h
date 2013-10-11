@@ -1,6 +1,6 @@
-typedef struct ISTAinstance {
+typedef struct ISTAinstance_mpi {
   // PARAMETERS
-  float* A;
+  //float* A; A is now stored with the slaves
   int ldA; //left dimension of A
   int rdA; //right dimension of A
   float* b;
@@ -9,6 +9,14 @@ typedef struct ISTAinstance {
   int acceleration; //0 if normal ISTA update; 1 for FISTA acceleration
   char regressionType; // 'l' for linear regression and 'o' for logistic regression
 
+  // MPI VALUES
+  int nslaves;
+  MPI_Comm comm;
+  int tag_ax;
+  int tag_atax;
+  int tag_atx;
+  int tag_die;
+  
   // VALUES DURING CALCULATION
   float* stepsize;
   float* xcurrent;
@@ -17,18 +25,22 @@ typedef struct ISTAinstance {
   float* gradvalue;
   float* eta; //intermediate space used during calculations, usually holds A*xcurrent
 
-} ISTAinstance;
+} ISTAinstance_mpi;
 
 // "Constructor" for ISTAinstance
 // Returns a pointer to an ISTAinstance object with the arguments to the functions set as the corresponding
 // elements in the ISTAinstance object.  Also, allocates appropriate memory for stepsize, xprevious,
 // searchPoint, gradvalue, and eta.  Finally, sets searchPoint equal to xvalue.
-extern ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
+extern ISTAinstance_mpi* ISTAinstance_mpi_new(int ldA, int rdA, float* b, float lambda, float gamma, 
 				      int acceleration, char regressionType, float* xvalue, float step );
 
 // "Deconstructor" for ISTAinstance
 // Applies free to all pointers contained in instance, then applies free to instance itself.
-extern void ISTAinstance_free(ISTAinstance* instance);
+extern void ISTAinstance_mpi_free(ISTAinstance_mpi* instance);
+
+
+/*
+
 
 // Applies ISTA to min( ISTAregress_func(xvalue) + lambda*regFunc(xvalue) )
 //    where ISTAregress_func is ||Ax-b||^2 for linear regression and the logistic function for logistic regression
@@ -78,11 +90,14 @@ extern void ISTAgrad(ISTAinstance* instance);
 // Version of gradient method for cross validation
 extern void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds);
 
-// Calculates the appropriate regression function for either linear or logistic regression
-extern float ISTAloss_func_mpi(float* xvalue, ISTAinstance* instance);
+*/
+
+
+// Calculates the appropriate loss function for either linear or logistic regression
+extern float ISTAloss_func_mpi(float* xvalue, ISTAinstance_mpi* instance);
 
 // Calculates the regression function value using only the rows corresponding to currentFold in folds
-extern float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold);
+//extern float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold);
 
 extern void soft_threshold(float* xvalue, int xlength, float threshold);
 

@@ -47,7 +47,7 @@ static void master(int nslaves)
 
   float *xvalue, *result;
   xvalue = malloc(rdA*sizeof(float));
-  result = malloc((total_ldA+small_ldA+rdA)*sizeof(float));
+  result = malloc((total_ldA+rdA)*sizeof(float));
   if(xvalue==NULL || result==NULL)
     fprintf(stdout,"Unable to allocate memory!");
   for(i=0; i < rdA; i++)
@@ -65,7 +65,7 @@ static void master(int nslaves)
       fprintf(stdout, "%f ", xvalue[i]);
     }
   fprintf(stdout, "\nHere's A*x result:\n");
-  for(i=0; i < total_ldA+small_ldA; i++)
+  for(i=0; i < total_ldA; i++)
     {
       fprintf(stdout, "%f ", result[i]);
     }
@@ -139,7 +139,7 @@ static void slave(int myrank)
 		      xvalue, 1, 0.0, resultVector, 1);
 
 	  //Gather xvalues
-	  MPI_Gather(resultVector, ldA, MPI_FLOAT, dummyFloat, ldA, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	  MPI_Gatherv(resultVector, ldA, MPI_FLOAT, dummyFloat, &dummyInt, &dummyInt, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 	  
 	}

@@ -5,15 +5,14 @@
 #include"mpi.h"
 #include"clistaLib.h"
 
-ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
+ISTAinstance_mpi* ISTAinstance_mpi_new(int ldA, int rdA, float* b, float lambda, float gamma, 
 			       int acceleration, char regressionType, float* xvalue, float step )
 {
   // This method initializes an ISTAinstance object
-  ISTAinstance* instance = malloc(sizeof(ISTAinstance));
+  ISTAinstance_mpi* instance = malloc(sizeof(ISTAinstance_mpi));
   if ( instance==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
 
-  instance->A = A;
   instance->ldA = ldA;
   instance->rdA = rdA;
   instance->b = b;
@@ -29,23 +28,23 @@ ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambd
 
   instance->xprevious = malloc(rdA*sizeof(float));
   if ( instance->xprevious==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
 
   instance->searchPoint = malloc(rdA*sizeof(float));
   if ( instance->searchPoint==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
   cblas_scopy(rdA, instance->xcurrent, 1, instance->searchPoint, 1);
 
   instance->gradvalue = malloc(rdA*sizeof(float));
   instance->eta = malloc((ldA+rdA)*sizeof(float));
   if ( instance->gradvalue==NULL || instance->eta==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
 
   return instance;
 }
 
 
-void ISTAinstance_free(ISTAinstance* instance)
+void ISTAinstance_mpi_free(ISTAinstance_mpi* instance)
 {
   // Frees an entire ISTAinstance pointer
   free(instance->eta); 
@@ -55,11 +54,10 @@ void ISTAinstance_free(ISTAinstance* instance)
   free(instance->xcurrent);
   free(instance->stepsize); 
   free(instance-> b);
-  free(instance-> A);
   free(instance);
 }
 
-
+/*
 
 void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
 	       int acceleration, char regressionType, float* xvalue, 
@@ -70,7 +68,7 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
   //INITIALIZATION
   ISTAinstance* instance = malloc(sizeof(ISTAinstance));
   if ( instance==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
 
   instance->A = A;
   instance->ldA = ldA;
@@ -88,17 +86,17 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
 
   instance->xprevious = malloc(rdA*sizeof(float));
   if ( instance->xprevious==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
 
   instance->searchPoint = malloc(rdA*sizeof(float));
   if ( instance->searchPoint==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
   cblas_scopy(rdA, instance->xcurrent, 1, instance->searchPoint, 1);
 
   instance->gradvalue = malloc(rdA*sizeof(float));
   instance->eta = malloc((ldA+rdA)*sizeof(float));
   if ( instance->gradvalue==NULL || instance->eta==NULL )
-    printf("Unable to allocate memory\n");
+    fprintf(stdout, "Unable to allocate memory\n");
 
   //Initialize stop values:
   int iter=0;
@@ -136,8 +134,8 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
       iter++;
     }
   
-  printf("iter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
-  printf("final regression function value: %f\n", ISTAloss_func_mpi(instance->xcurrent, instance) );
+  fprintf(stdout, "iter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
+  fprintf(stdout, "final regression function value: %f\n", ISTAloss_func_mpi(instance->xcurrent, instance) );
 
   //FREE MEMORY
   free(instance->eta); free(instance->gradvalue); free(instance->searchPoint); free(instance->xprevious);
@@ -195,7 +193,7 @@ float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instan
 
   float** values = malloc( num_lambdas*sizeof(float*) );
   if( values==NULL )
-    printf("Unable to allocate memory");
+    fprintf(stdout, "Unable to allocate memory");
 
   int i;
 
@@ -209,7 +207,7 @@ float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instan
       // record solution in values[i]
       values[i] = malloc( (instance->rdA) * sizeof(float) );
       if ( values[i] == NULL )
-	printf("Unable to allocate memory");
+	fprintf(stdout, "Unable to allocate memory");
       cblas_scopy(instance->rdA, instance->xcurrent, 1, values[i], 1); 
     }
 
@@ -239,7 +237,7 @@ float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds,
 	    numRowsInFold++;
 	}
       if(numRowsInFold == 0)
-	printf("no rows in this folds!");
+	fprintf(stdout, "no rows in this folds!");
 
       // reset xcurrent to 0 vector
       cblas_sscal(instance->rdA, 0.0, instance->xcurrent, 1);
@@ -294,25 +292,25 @@ float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds,
 
 void ISTAbacktrack(ISTAinstance* instance)
 {
-  /* initialize */
+  // initialize 
   int i;
   int numTrials = 0;
   float difference;
 
-  /* calculate gradient at current searchPoint */
+  // calculate gradient at current searchPoint 
   ISTAgrad(instance);
   
   do
   {
-    if(numTrials > 0) /*dont update stepsize the first time through */
+    if(numTrials > 0) // dont update stepsize the first time through 
       *(instance->stepsize) *= instance->gamma;
 
-    /*update xcurrent = soft(  searchPoint - stepsize*gradvalue , lambda*stepsize )  */
+    //update xcurrent = soft(  searchPoint - stepsize*gradvalue , lambda*stepsize )  
     cblas_scopy(instance->rdA, instance->searchPoint, 1, instance->xcurrent, 1);
     cblas_saxpy(instance->rdA, -(*(instance->stepsize)), instance->gradvalue, 1, instance->xcurrent, 1);
     soft_threshold(instance->xcurrent, instance->rdA, instance->lambda * (*(instance->stepsize)));
 
-    /*calculate difference that, when negative, guarantees the objective function decreases */
+    //calculate difference that, when negative, guarantees the objective function decreases
     difference = ISTAloss_func_mpi(instance->xcurrent, instance) - 
 	         ISTAloss_func_mpi(instance->searchPoint, instance);
     cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->eta, 1);
@@ -325,31 +323,31 @@ void ISTAbacktrack(ISTAinstance* instance)
   } while(numTrials < 100 && difference > 0);
   
   if(numTrials == 100)
-    printf("backtracking failed\n");
+    fprintf(stdout, "backtracking failed\n");
 
 }
 
 void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds)
 {
-  /* initialize */
+  // initialize 
   int i;
   int numTrials = 0;
   float difference;
 
-  /* calculate gradient at current searchPoint */
+  // calculate gradient at current searchPoint
   ISTAgrad_cv(instance, currentFold, folds);
   
   do
   {
-    if(numTrials > 0) /*dont update stepsize the first time through */
+    if(numTrials > 0) // dont update stepsize the first time through 
       *(instance->stepsize) *= instance->gamma;
 
-    /*update xcurrent = soft(  searchPoint - stepsize*gradvalue , lambda*stepsize )  */
+    // update xcurrent = soft(  searchPoint - stepsize*gradvalue , lambda*stepsize )  
     cblas_scopy(instance->rdA, instance->searchPoint, 1, instance->xcurrent, 1);
     cblas_saxpy(instance->rdA, -(*(instance->stepsize)), instance->gradvalue, 1, instance->xcurrent, 1);
     soft_threshold(instance->xcurrent, instance->rdA, instance->lambda * (*(instance->stepsize)));
 
-    /*calculate difference that, when negative, guarantees the objective function decreases */
+    // calculate difference that, when negative, guarantees the objective function decreases 
     difference = ISTAregress_func_cv(instance->xcurrent, instance, currentFold, folds, 0) - 
 	         ISTAregress_func_cv(instance->searchPoint, instance, currentFold, folds, 0);
     cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->eta, 1);
@@ -362,7 +360,7 @@ void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds)
   } while(numTrials < 100 && difference > 0);
   
   if(numTrials == 100)
-    printf("backtracking failed\n");
+    fprintf(stdout, "backtracking failed\n");
 
 }
 
@@ -376,7 +374,7 @@ void ISTAgrad(ISTAinstance* instance)
   
   switch ( instance->regressionType )
     {
-    case 'l': /*Here we calculate the gradient: 2*A'*(A*searchPoint - b)  */
+    case 'l': // Here we calculate the gradient: 2*A'*(A*searchPoint - b)  
       cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
 		  instance->searchPoint, 1, 0.0, instance->eta, 1);
       cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*searchPoint - b
@@ -385,7 +383,7 @@ void ISTAgrad(ISTAinstance* instance)
 		  instance->eta, 1, 0.0, instance->gradvalue, 1);
       break;
 
-    case 'o': /*Here we calculate the gradient:A'*(p(A*searchPoint) - b) where p is the logistic function */
+    case 'o': // Here we calculate the gradient:A'*(p(A*searchPoint) - b) where p is the logistic function 
       cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
 		  instance->searchPoint, 1, 0.0, instance->eta, 1);
       for(i=0; i < instance->ldA; i++)
@@ -411,7 +409,7 @@ void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds)
   
   switch ( instance->regressionType )
     {
-    case 'l': /*Here we calculate the gradient: 2*A'*(A*searchPoint - b)  */
+    case 'l': // Here we calculate the gradient: 2*A'*(A*searchPoint - b)  
       cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
 		  instance->searchPoint, 1, 0.0, instance->eta, 1);
       cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*searchPoint - b
@@ -427,7 +425,7 @@ void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds)
 		  instance->eta, 1, 0.0, instance->gradvalue, 1);
       break;
 
-    case 'o': /*Here we calculate the gradient:A'*(p(A*searchPoint) - b) where p is the logistic function */
+    case 'o': // Here we calculate the gradient:A'*(p(A*searchPoint) - b) where p is the logistic function 
       cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
 		  instance->searchPoint, 1, 0.0, instance->eta, 1);
       for(i=0; i < instance->ldA; i++)
@@ -446,7 +444,16 @@ void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds)
 
 }
 
-float ISTAloss_func_mpi(float* xvalue, ISTAinstance* instance)
+
+
+*/
+
+
+
+
+
+
+float ISTAloss_func_mpi(float* xvalue, ISTAinstance_mpi* instance)
 {
   //THIS FUNCTION REPRESENTS THE SMOOTH FUNCTION THAT WE ARE TRYING TO OPTIMIZE
   //WHILE KEEPING THE REGULARIZATION FUNCTION (USUALLY THE 1-NORM) SMALL
@@ -456,26 +463,32 @@ float ISTAloss_func_mpi(float* xvalue, ISTAinstance* instance)
 
   switch (instance->regressionType) 
     {
-    case 'l': /*In this case, the regression function is ||A*xvalue - b||^2 */
-      cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
-		  xvalue, 1, 0.0, instance->eta, 1);
+    case 'l': //In this case, the regression function is ||A*xvalue - b||^2 
+      //      cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
+      //	  xvalue, 1, 0.0, instance->eta, 1);
+      multiply_Ax(xvalue, instance->rdA, instance->ldA, instance->eta, 
+		  instance->nslaves, instance->comm, instance->tag_ax);
       cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*xvalue - b
 
       value = pow( cblas_snrm2(instance->ldA, instance->eta, 1 ), 2);
       break;
 
     case 'o': /*Regression function: sum log(1+ e^(A_i * x)) - A_i * x * b_i */
-      cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
-		  xvalue, 1, 0.0, instance->eta, 1);
-      for(i=0; i < instance->ldA; i++)
-	{
-	  value += log( 1 + exp( instance->eta[i] )) - instance->eta[i] * instance->b[i];
-	}
-      break;
+      //cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
+      //		  xvalue, 1, 0.0, instance->eta, 1);
+  //for(i=0; i < instance->ldA; i++)
+      //	{
+      //  value += log( 1 + exp( instance->eta[i] )) - instance->eta[i] * instance->b[i];
+      //	}
+	break;
     }
       
   return value;
 }
+
+
+/*
+
 
 float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold)
 {
@@ -487,7 +500,7 @@ float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold
 
   switch (instance->regressionType) 
     {
-    case 'l': /*In this case, the regression function is ||A*xvalue - b||^2 */
+    case 'l': //In this case, the regression function is ||A*xvalue - b||^2 
       cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
 		  xvalue, 1, 0.0, instance->eta, 1);
       cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*xvalue - b
@@ -502,7 +515,7 @@ float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold
       value = pow( cblas_snrm2(instance->ldA, instance->eta, 1 ), 2);
       break;
 
-    case 'o': /*Regression function: sum log(1+ e^(A_i * x)) - A_i * x * b_i */
+    case 'o': // Regression function: sum log(1+ e^(A_i * x)) - A_i * x * b_i 
       cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 1.0, instance->A, instance->rdA, 
 		  xvalue, 1, 0.0, instance->eta, 1);
       for(j=0; j < instance->ldA; j++)
@@ -516,13 +529,15 @@ float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold
   return value;
 }
 
+*/
+
 void soft_threshold(float* xvalue, int xlength, float threshold)
 {
   //IMPLEMENTATION OF THE SOFT THRESHOLDING OPERATION
 
   if( threshold < 0)
     {
-       printf("threshold value should be nonnegative\n");
+       fprintf(stdout, "threshold value should be nonnegative\n");
        return;
     }
   int i;
@@ -540,9 +555,17 @@ void soft_threshold(float* xvalue, int xlength, float threshold)
 extern void multiply_Ax(float* xvalue, int lenx, int ldA, float* result, int nslaves, MPI_Comm comm, int TAG)
 {
   int rank;
-  float* temp = calloc(ldA, sizeof(float));
-  if(temp==NULL)
+  float* temp;
+  int* counts = calloc(nslaves+1, sizeof(int));
+  int* displacements = calloc(nslaves + 1, sizeof(int));
+  if(counts==NULL || displacements==NULL)
     fprintf(stdout,"Unable to allocate memory!");
+  for(rank=1; rank <= nslaves; rank++)
+    {
+      counts[rank] = ldA;
+      displacements[rank] = ldA*(rank-1);
+    }
+
 
   for(rank=1; rank <= nslaves; rank++)
     {
@@ -551,9 +574,9 @@ extern void multiply_Ax(float* xvalue, int lenx, int ldA, float* result, int nsl
 
   MPI_Bcast(xvalue, lenx, MPI_FLOAT, 0, comm);
 
-  MPI_Gather(temp, ldA, MPI_FLOAT, result, ldA, MPI_FLOAT, 0, comm);
+  MPI_Gatherv(temp, 0, MPI_FLOAT, result, counts, displacements, MPI_FLOAT, 0, comm);
 
-  free(temp);
+  free(counts); free(displacements);
 
   return;
 }
