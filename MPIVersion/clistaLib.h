@@ -1,7 +1,8 @@
 typedef struct ISTAinstance_mpi {
   // PARAMETERS
-  //float* A; A is now stored with the slaves
+  // NOTE: A is now stored with the slaves, only the dimensions are here
   int ldA; //left dimension of A
+  int slave_ldA; //left dimension of each smaller A stored on cluster nodes
   int rdA; //right dimension of A
   float* b;
   float lambda; //how much weight we give to the 1-norm
@@ -31,8 +32,12 @@ typedef struct ISTAinstance_mpi {
 // Returns a pointer to an ISTAinstance object with the arguments to the functions set as the corresponding
 // elements in the ISTAinstance object.  Also, allocates appropriate memory for stepsize, xprevious,
 // searchPoint, gradvalue, and eta.  Finally, sets searchPoint equal to xvalue.
-extern ISTAinstance_mpi* ISTAinstance_mpi_new(int ldA, int rdA, float* b, float lambda, float gamma, 
-				      int acceleration, char regressionType, float* xvalue, float step );
+extern 
+ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float lambda, 
+				       float gamma, int acceleration, char regressionType, 
+				       float* xvalue, float step,
+				       int nslaves, MPI_Comm comm, int ax, int atx, int atax, int die);
+
 
 // "Deconstructor" for ISTAinstance
 // Applies free to all pointers contained in instance, then applies free to instance itself.
@@ -84,13 +89,16 @@ extern void ISTAbacktrack(ISTAinstance* instance);
 // Version of backtracking for cross validation
 extern void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds);
 
+*/
+
+
 // Calculates gradient of ISTAregress_func at searchPoint and stores it in gradvalue
-extern void ISTAgrad(ISTAinstance* instance);
+extern void ISTAgrad(ISTAinstance_mpi* instance);
 
 // Version of gradient method for cross validation
-extern void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds);
+//extern void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds);
 
-*/
+
 
 
 // Calculates the appropriate loss function for either linear or logistic regression
@@ -99,10 +107,19 @@ extern float ISTAloss_func_mpi(float* xvalue, ISTAinstance_mpi* instance);
 // Calculates the regression function value using only the rows corresponding to currentFold in folds
 //extern float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold);
 
+//Implements soft thresholding operation
 extern void soft_threshold(float* xvalue, int xlength, float threshold);
 
+//Routine that uses MPI to calculate the matrix-vector product A*xvalue and stores it in result
+//Note: ldA refers to the slave_ldA, i.e. the left dimension of the small A stored in a slave node
+//      lenx is the length of xvalue
 extern void multiply_Ax(float* xvalue, int lenx, int ldA, float* result, int nslaves, MPI_Comm comm, int TAG);
 
+//Same as multiply_Ax, but with A'
+extern void multiply_ATx(float* xvalue, int lenx, int slave_ldA, int rdA, float* result, int nslaves, MPI_Comm comm, int TAG);
+
+//Routine that uses MPI to calculate the matrix-vector produce A'*A*xvalue and stores it in result
+//Notes: lenx is the length of xvalue
 extern void multiply_ATAx(float* xvalue, int lenx, float* result, int nslaves, MPI_Comm comm, int TAG);
 
 extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank);
