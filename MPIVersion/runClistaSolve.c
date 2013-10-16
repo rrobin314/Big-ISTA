@@ -14,8 +14,18 @@
 static void master(int nslaves);
 static void slave(int myrank);
 
+//Time wasn't working well to seed the random number generator.
+//This function counts the number of cycles since the processor was
+//turned on.  We use this to seed rand()
+unsigned long long rdtsc(){
+    unsigned int lo,hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((unsigned long long)hi << 32) | lo;
+}
+
 int main(int argc, char **argv)
 {
+  srand(rdtsc());
   int myrank, nslaves;
 
   MPI_Init(&argc, &argv);
@@ -40,21 +50,25 @@ int main(int argc, char **argv)
 
 static void master(int nslaves)
 {
-  int rank, i, accel;
+  int rank, i, accel, MAX_ITER;
   int small_ldA=2;
   int total_ldA=nslaves*small_ldA;
-  int rdA=4;
+  int rdA=15;
   ISTAinstance_mpi* instance;
-  float *xvalue, *yvalue, *result, *b, lambda, gamma, step;
+  float *xvalue, *yvalue, *result, *b, lambda, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
   char regType;
 
   //Initialize values:
-  lambda = 0.0;
+  lambda = 0.1;
   gamma = 0.9;
   step = 1.0;
   regType = 'l';
   accel = 0;
+  MAX_ITER=10000;
+  MIN_XDIFF=0.0001;
+  MIN_FUNCDIFF=0.00001;
 
+  //Allocate Memory
   xvalue = malloc(rdA*sizeof(float));
   yvalue = malloc(total_ldA*sizeof(float));
   result = malloc((total_ldA+rdA)*sizeof(float));
@@ -62,15 +76,32 @@ static void master(int nslaves)
   if(xvalue==NULL || result==NULL)
     fprintf(stdout,"Unable to allocate memory!");
   
-
+  //Assign values to xvalue and b
   for(i=0; i < rdA; i++)
     {
       xvalue[i] = (i+3) * 0.5;
     }
-  yvalue[0] = 1.0; yvalue[1] = 0.0; yvalue[2] = 0.0; 
-  yvalue[3] = 1.0; yvalue[4] = 2.0; yvalue[5] = 0.0; 
-  b[0]=0.5; b[1]=6.1; b[2]=5.0; b[3]=11.2; b[4]=7.5; b[5]=18.3;
+  for(i=0; i < total_ldA; i++)
+    {
+      b[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
+    }
 
+  fprintf(stdout, "Here's x:\n");
+  for(i=0; i < rdA; i++)
+    {
+      fprintf(stdout, "%f ", xvalue[i]);
+    }
+  fprintf(stdout, "\n and here's b:\n");
+  for(i=0; i < total_ldA; i++)
+    {
+      fprintf(stdout, "%f ", b[i]);
+    }
+  
+  //yvalue[0] = 1.0; yvalue[1] = 0.0; yvalue[2] = 0.0; 
+  //yvalue[3] = 1.0; yvalue[4] = 2.0; yvalue[5] = 0.0; 
+  //b[0]=0.5; b[1]=6.1; b[2]=5.0; b[3]=11.2; b[4]=7.5; b[5]=18.3;
+  
+  //Create ISTA object
   instance = ISTAinstance_mpi_new(small_ldA, rdA, b, lambda, gamma, 
 				  accel, regType, xvalue, step,
 				  nslaves, MPI_COMM_WORLD,
@@ -78,15 +109,25 @@ static void master(int nslaves)
   
 
   //Do work!
+  ISTAsolve_lite(instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF);
   multiply_Ax(xvalue, rdA, small_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
   //multiply_ATx(yvalue, total_ldA, small_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
 
   //print results
-  fprintf(stdout, "Here's x:\n");
+  fprintf(stdout, "Here's the optimized x:\n");
   for(i=0; i < rdA; i++)
     {
       fprintf(stdout, "%f ", xvalue[i]);
     }
+  fprintf(stdout, "\n and here's the optimized A*x:\n");
+  for(i=0; i < total_ldA; i++)
+    {
+      fprintf(stdout, "%f ", result[i]);
+    }
+
+
+
+  /*
   fprintf(stdout, "\nHere's A*x result:\n");
   for(i=0; i < total_ldA; i++)
     {
@@ -111,11 +152,14 @@ static void master(int nslaves)
   //    {
   //     fprintf(stdout, "%f ", result[i]);
   //    }
+  */
+
+
+
 
   fprintf(stdout, "\nClosing the program\n");
 
-
-  //Close the slave processes
+  //CLOSE THE SLAVE PROCESSES AND FREE MEMORY
   for(rank=1; rank <= nslaves; rank++)
     {
       MPI_Send(0, 0, MPI_INT, rank, TAG_DIE, MPI_COMM_WORLD);
@@ -131,7 +175,7 @@ static void slave(int myrank)
   MPI_Status status;
   float *A, *xvalue, *resultVector, *tempHolder, *dummyFloat;
   int ldA=2;
-  int rdA=4;
+  int rdA=15;
 
   //ALLOCATE A, TEMPHOLDER, RESULTVECTOR and XVALUE
   A = (float*)calloc(ldA*rdA, sizeof(float));
@@ -146,7 +190,6 @@ static void slave(int myrank)
 
 
   //FILL A WITH DESIRED VALUES
-  fprintf(stdout,"Slave %d getting matrix A\n", myrank);
   get_dat_matrix(A, ldA, rdA, myrank);
   fprintf(stdout,"A[0] for slave %d is %f \n", myrank, A[0]);
 

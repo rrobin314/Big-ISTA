@@ -153,7 +153,9 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
 									       
 }
 
-void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
+*/
+
+void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
 {
   // This version of ISTAsolve solve does not allocate any memory
 
@@ -193,7 +195,12 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float
       iter++;
     }
 
+  fprintf(stdout, "\niter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
+  fprintf(stdout, "final regression function value: %f\n", ISTAloss_func_mpi(instance->xcurrent, instance) );
+
 }
+
+/*
 
 float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
 			   int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
@@ -299,11 +306,11 @@ float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds,
   return meanTotalError;
 }
 
+*/
 
-void ISTAbacktrack(ISTAinstance* instance)
+void ISTAbacktrack(ISTAinstance_mpi* instance)
 {
   // initialize 
-  int i;
   int numTrials = 0;
   float difference;
 
@@ -336,6 +343,8 @@ void ISTAbacktrack(ISTAinstance* instance)
     fprintf(stdout, "backtracking failed\n");
 
 }
+
+/*
 
 void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds)
 {
@@ -656,10 +665,13 @@ extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank)
 {
   int i;
 
-  fprintf(stdout,"Slave %d getting %d by %d matrix\n", myrank, ldA, rdA);
+  //  fprintf(stdout,"Slave %d getting %d by %d matrix\n", myrank, ldA, rdA);
 
   for( i=0; i<ldA*rdA; i++)
-    A[i] = myrank * (i+1) * 0.1;
+    {
+      //A[i] = myrank * (i+1) * 0.1;
+      A[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
+    }
 
   return;
 }

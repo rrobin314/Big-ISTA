@@ -57,10 +57,14 @@ extern void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float 
 		      int acceleration, char regressionType, float* xvalue, 
 		      int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF);
 
+*/
+
 // This version of ISTAsolve does not allocate any memory
 // and is meant to be used with ISTAinstance_new and ISTAinstance_free to handle
 // memory allocation.
-extern void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
+extern void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
+
+/*
 
 // Applies ISTAsolve_lite to instance for a series of lambdas.
 // All solutions are returned in the double pointer.
@@ -78,18 +82,21 @@ extern float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance*
 extern float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds, 
 			  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
 
+*/
+
 // Backtracking routine to determine how big of a gradient step to take during ISTA.
 // Does the following updates:
 // Updates gradvalue to that of current searchPoint
 // Updates xcurrent to the gradient step from searchPoint indicated by stepsize
 // Updates eta to xcurrent - searchPoint
 // If additional loops are necessary, updates stepsize to gamma*stepsize 
-extern void ISTAbacktrack(ISTAinstance* instance);
+extern void ISTAbacktrack(ISTAinstance_mpi* instance);
+
+
 
 // Version of backtracking for cross validation
-extern void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds);
+//extern void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds);
 
-*/
 
 
 // Calculates gradient of ISTAregress_func at searchPoint and stores it in gradvalue
