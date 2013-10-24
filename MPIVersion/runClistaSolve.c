@@ -11,8 +11,13 @@
 #define TAG_DIE 451
 #define TAG_ATAX 674
 
-static void master(int nslaves);
-static void slave(int myrank);
+static void master(int nslaves, char* parameterFile);
+static void slave(int myrank, char* parameterFile);
+static void getSlaveParams(char* parameterFile, int* ldA, int* rdA, char* matrixfilename);
+static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, 
+			    int* slave_ldA, int* rdA, float* lambda, float* gamma, 
+			    float* step, char* regType, int* accel, 
+			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF);
 
 //Time wasn't working well to seed the random number generator.
 //This function counts the number of cycles since the processor was
@@ -37,54 +42,65 @@ int main(int argc, char **argv)
 
   if (myrank==0)
     {
-      master(nslaves);
+      master(nslaves, argv[1]);
     }
   else
     {
-      slave(myrank);
+      slave(myrank, argv[2]);
     }
 
   MPI_Finalize();
   return 0;
 }
 
-static void master(int nslaves)
+static void master(int nslaves, char* parameterFile)
 {
-  int rank, i, accel, MAX_ITER;
-  int small_ldA=2;
-  int total_ldA=nslaves*small_ldA;
-  int rdA=100;
+  int rank, i, accel, MAX_ITER, slave_ldA, total_ldA, rdA;
+  //int slave_ldA=2;
+  //int total_ldA=nslaves*slave_ldA;
+  //int rdA=100;
   ISTAinstance_mpi* instance;
   float *xvalue, *yvalue, *result, *b, lambda, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
-  char regType;
+  char regType, xfilename[32], bfilename[32];
 
-  //Initialize values:
-  lambda = 0.1;
-  gamma = 0.9;
-  step = 1.0;
-  regType = 'l';
-  accel = 0;
-  MAX_ITER=10000;
-  MIN_XDIFF=0.0001;
-  MIN_FUNCDIFF=0.00001;
+  //Get values from parameter file
+  getMasterParams(parameterFile, xfilename, bfilename, &slave_ldA, &rdA, 
+		  &lambda, &gamma, &step, &regType, &accel, 
+		  &MAX_ITER, &MIN_XDIFF, &MIN_FUNCDIFF);
+  total_ldA = nslaves*slave_ldA;
+
 
   //Allocate Memory
   xvalue = malloc(rdA*sizeof(float));
   yvalue = malloc(total_ldA*sizeof(float));
   result = malloc((total_ldA+rdA)*sizeof(float));
   b      = malloc((total_ldA)*sizeof(float));
-  if(xvalue==NULL || result==NULL)
+  if(xvalue==NULL || result==NULL || yvalue==NULL || b==NULL)
     fprintf(stdout,"Unable to allocate memory!");
   
+
   //Assign values to xvalue and b
+  
+  FILE* bfile;
+  bfile = fopen(bfilename, "r");
+  if(bfile == NULL)
+    fprintf(stderr, "bfile open failed!\n");
+
+  float temp;
+  for(i=0; i<total_ldA; i++) {
+    fscanf(bfile, " %32f ", &temp);
+    b[i] = temp;
+  }
+  fclose(bfile);
+
   for(i=0; i < rdA; i++)
     {
       xvalue[i] = (i+3) * 0.01;
     }
-  for(i=0; i < total_ldA; i++)
-    {
-      b[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
-    }
+  //for(i=0; i < total_ldA; i++)
+  //  {
+  //   b[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
+  //}
 
   fprintf(stdout, "Here's x:\n");
   for(i=0; i < rdA; i++)
@@ -102,7 +118,7 @@ static void master(int nslaves)
   //b[0]=0.5; b[1]=6.1; b[2]=5.0; b[3]=11.2; b[4]=7.5; b[5]=18.3;
   
   //Create ISTA object
-  instance = ISTAinstance_mpi_new(small_ldA, rdA, b, lambda, gamma, 
+  instance = ISTAinstance_mpi_new(slave_ldA, rdA, b, lambda, gamma, 
 				  accel, regType, xvalue, step,
 				  nslaves, MPI_COMM_WORLD,
 				  TAG_AX, TAG_ATX, TAG_ATAX, TAG_DIE);
@@ -110,8 +126,8 @@ static void master(int nslaves)
 
   //Do work!
   ISTAsolve_lite(instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF);
-  multiply_Ax(xvalue, rdA, small_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
-  //multiply_ATx(yvalue, total_ldA, small_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
+  multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
+  //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
 
   //print results
   fprintf(stdout, "Here's the optimized x:\n");
@@ -169,14 +185,15 @@ static void master(int nslaves)
 
 }
 
-static void slave(int myrank)
+static void slave(int myrank, char* parameterFile)
 {
-  int dummyInt;
+  int dummyInt, ldA, rdA;
   MPI_Status status;
   float *A, *xvalue, *resultVector, *tempHolder, *dummyFloat;
-  int ldA=2;
-  int rdA=100;
-  char* filename = "XMatrix.csv";
+  char matrixfilename[32];
+
+  //GET PARAMETERS FROM THE TEXT FILE
+  getSlaveParams(parameterFile, &ldA, &rdA, matrixfilename);
 
   //ALLOCATE A, TEMPHOLDER, RESULTVECTOR and XVALUE
   A = (float*)calloc(ldA*rdA, sizeof(float));
@@ -191,7 +208,7 @@ static void slave(int myrank)
 
 
   //FILL A WITH DESIRED VALUES
-  get_dat_matrix(A, ldA, rdA, myrank, filename);
+  get_dat_matrix(A, ldA, rdA, myrank, matrixfilename);
   fprintf(stdout,"A[99] for slave %d is %f \n", myrank, A[99]);
 
   //COMPUTATION LOOP
@@ -261,5 +278,48 @@ static void slave(int myrank)
     }
 
   free(A); free(xvalue); free(tempHolder); free(resultVector);
+  return;
+}
+
+static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, 
+			    int* slave_ldA, int* rdA, float* lambda, float* gamma, 
+			    float* step, char* regType, int* accel, 
+			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF) {
+  FILE *paramFile;
+  paramFile = fopen(parameterFile, "r");
+  if(paramFile == NULL)
+    fprintf(stderr, "ParamFile Open Failed!\n");
+
+  //Read parameters:
+  fscanf(paramFile, "FileNameForX0 : %32s", xfilename);
+  fscanf(paramFile, " FileNameForB : %32s", bfilename);
+  fscanf(paramFile, " numRowsForSlave : %d", slave_ldA);
+  fscanf(paramFile, " numCols : %d", rdA);
+  fscanf(paramFile, " RegularizationWeight : %16f", lambda);
+  fscanf(paramFile, " StepSizeDecretion : %16f", gamma);
+  fscanf(paramFile, " InitialStep : %16f", step);
+  fscanf(paramFile, " RegressionType : %4s", regType);
+  fscanf(paramFile, " FistaAcceleration : %d", accel);
+  fscanf(paramFile, " MaximumIterations : %d", MAX_ITER);
+  fscanf(paramFile, " MinimumXDelta : %16f", MIN_XDIFF);
+  fscanf(paramFile, " MinimumFuncDelta : %16f", MIN_FUNCDIFF);
+
+  fclose(paramFile);
+  return;
+}
+
+
+static void getSlaveParams(char* parameterFile, int* ldA, int* rdA, char* matrixfilename) {
+
+  FILE *paramFile;
+  paramFile = fopen(parameterFile, "r");
+  if(paramFile == NULL)
+    fprintf(stderr, "ParamFile Open Failed!\n");
+
+  fscanf(paramFile, "MatrixFileName : %32s", matrixfilename);
+  fscanf(paramFile, " numRows : %d", ldA);
+  fscanf(paramFile, " numCols : %d", rdA);
+
+  fclose(paramFile);
   return;
 }
