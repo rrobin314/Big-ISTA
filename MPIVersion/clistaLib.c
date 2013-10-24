@@ -661,17 +661,50 @@ extern void multiply_ATAx(float* xvalue, int lenx, float* result, int nslaves, M
   return;
 }
 
-extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank)
+extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank, char* filename)
 {
-  int i;
+  int numRowsSkip = (myrank-1)*ldA;
+
+  //Open the file
+  FILE *matrixfile;
+  matrixfile = fopen(filename, "r");
+  if(matrixfile == NULL)
+    fprintf(stderr, "File Open Failed on process %d!\n", myrank);
+
+  //Skip to appropriate place in file
+  char c;
+  int count=0;
+  while( count < numRowsSkip) {
+    do {
+      c = getc(matrixfile);
+    } while( c != '\n');
+    count++;
+  }
+
+  //READ IN MATRIX DATA
+  float value;
+  int row, col;
+
+  fprintf(stdout, "\nProcess %d getting matrix entries\n", myrank);
+  for(row=0; row<ldA; row++) {
+    for(col=0; col<rdA; col++) {
+      fscanf(matrixfile, "%32f", &value);
+      A[row*rdA + col] = value;
+      fscanf(matrixfile, " , ");
+    }
+  }	 
+
+  fclose(matrixfile);
+
+  //int i;
 
   //  fprintf(stdout,"Slave %d getting %d by %d matrix\n", myrank, ldA, rdA);
 
-  for( i=0; i<ldA*rdA; i++)
-    {
-      //A[i] = myrank * (i+1) * 0.1;
-      A[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
-    }
+  //for( i=0; i<ldA*rdA; i++)
+  //{
+  //  //A[i] = myrank * (i+1) * 0.1;
+  //  A[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
+  //}
 
   return;
 }

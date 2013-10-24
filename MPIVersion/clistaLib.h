@@ -129,4 +129,11 @@ extern void multiply_ATx(float* xvalue, int lenx, int slave_ldA, int rdA, float*
 //Notes: lenx is the length of xvalue
 extern void multiply_ATAx(float* xvalue, int lenx, float* result, int nslaves, MPI_Comm comm, int TAG);
 
-extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank);
+//This method gets an ldA x rdA matrix from the csv file "filename"
+//It is assumed that "filename" contains a matrix without row or column labels
+//where floats are specified with fewer than 24 significant digits.
+//It is assumed that "filename" contains a matrix with exactly rdA columns
+//
+//A is located by skipping the first (myrank-1)*ldA rows in the file and
+//starting input of A from that point.
+extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank, char* filename);

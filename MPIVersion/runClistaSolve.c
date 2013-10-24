@@ -53,7 +53,7 @@ static void master(int nslaves)
   int rank, i, accel, MAX_ITER;
   int small_ldA=2;
   int total_ldA=nslaves*small_ldA;
-  int rdA=15;
+  int rdA=100;
   ISTAinstance_mpi* instance;
   float *xvalue, *yvalue, *result, *b, lambda, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
   char regType;
@@ -79,7 +79,7 @@ static void master(int nslaves)
   //Assign values to xvalue and b
   for(i=0; i < rdA; i++)
     {
-      xvalue[i] = (i+3) * 0.5;
+      xvalue[i] = (i+3) * 0.01;
     }
   for(i=0; i < total_ldA; i++)
     {
@@ -175,7 +175,8 @@ static void slave(int myrank)
   MPI_Status status;
   float *A, *xvalue, *resultVector, *tempHolder, *dummyFloat;
   int ldA=2;
-  int rdA=15;
+  int rdA=100;
+  char* filename = "XMatrix.csv";
 
   //ALLOCATE A, TEMPHOLDER, RESULTVECTOR and XVALUE
   A = (float*)calloc(ldA*rdA, sizeof(float));
@@ -190,8 +191,8 @@ static void slave(int myrank)
 
 
   //FILL A WITH DESIRED VALUES
-  get_dat_matrix(A, ldA, rdA, myrank);
-  fprintf(stdout,"A[0] for slave %d is %f \n", myrank, A[0]);
+  get_dat_matrix(A, ldA, rdA, myrank, filename);
+  fprintf(stdout,"A[99] for slave %d is %f \n", myrank, A[99]);
 
   //COMPUTATION LOOP
   while(1)
