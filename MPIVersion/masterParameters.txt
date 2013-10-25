@@ -1,8 +1,10 @@
 FileNameForX0 : xinit.csv
 FileNameForB : yVector.csv
-numRowsForSlave : 2
+numRowsForSlave : 10
 numCols : 100
-RegularizationWeight : 0.1
+numLambdas : 3 (lambda is the weight we put on the regularization function)
+lambdaStart : 0.3
+lambdaFinish : 0.01
 StepSizeDecretion : 0.9
 InitialStep : 1.0
 RegressionType : l

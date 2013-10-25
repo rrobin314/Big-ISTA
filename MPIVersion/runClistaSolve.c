@@ -15,8 +15,9 @@ static void master(int nslaves, char* parameterFile);
 static void slave(int myrank, char* parameterFile);
 static void getSlaveParams(char* parameterFile, int* ldA, int* rdA, char* matrixfilename);
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, 
-			    int* slave_ldA, int* rdA, float* lambda, float* gamma, 
-			    float* step, char* regType, int* accel, 
+			    int* slave_ldA, int* rdA, 
+			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
+			    float* gamma, float* step, char* regType, int* accel, 
 			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF);
 
 //Time wasn't working well to seed the random number generator.
@@ -55,20 +56,20 @@ int main(int argc, char **argv)
 
 static void master(int nslaves, char* parameterFile)
 {
-  //Variable Declarations
-  int rank, i, accel, MAX_ITER, slave_ldA, total_ldA, rdA;
+  //VARIABLE DECLARATIONS
+  int rank, i, j, accel, MAX_ITER, slave_ldA, total_ldA, rdA, numLambdas;
   ISTAinstance_mpi* instance;
-  float *xvalue, *result, *b, lambda, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
+  float *xvalue, *result, *b, lambdaStart, lambdaFinish, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
   char regType, xfilename[32], bfilename[32];
 
-  //Get values from parameter file
+  //GET VALUES FROM PARAMETER FILE
   getMasterParams(parameterFile, xfilename, bfilename, &slave_ldA, &rdA, 
-		  &lambda, &gamma, &step, &regType, &accel, 
+		  &numLambdas, &lambdaStart, &lambdaFinish, &gamma, &step, &regType, &accel, 
 		  &MAX_ITER, &MIN_XDIFF, &MIN_FUNCDIFF);
   total_ldA = nslaves*slave_ldA;
 
 
-  //Allocate Memory
+  //ALLOCATE MEMORY
   xvalue = calloc(rdA,sizeof(float));
   result = malloc((total_ldA+rdA)*sizeof(float));
   b      = malloc((total_ldA)*sizeof(float));
@@ -76,7 +77,7 @@ static void master(int nslaves, char* parameterFile)
     fprintf(stdout,"Unable to allocate memory!");
   
 
-  //Assign values to xvalue and b 
+  //ASSIGN VALUES TO XVALUE AND B
   //For now we just assign x0 to be all zeros (see calloc above)  
   FILE* bfile;
   float temp;
@@ -89,7 +90,6 @@ static void master(int nslaves, char* parameterFile)
     b[i] = temp;
   }
   fclose(bfile);
-
   /*
   FILE* xfile;
   xfile = fopen(xfilename, "r");
@@ -105,7 +105,7 @@ static void master(int nslaves, char* parameterFile)
 
 
 
-  //Print Inputs
+  //PRINT INPUTS
   fprintf(stdout, "Here's x:\n");
   for(i=0; i < rdA; i++)
     {
@@ -118,42 +118,45 @@ static void master(int nslaves, char* parameterFile)
     }
   
 
-  //Create ISTA object
-  instance = ISTAinstance_mpi_new(slave_ldA, rdA, b, lambda, gamma, 
+  //CREATE ISTA OBJECT
+  instance = ISTAinstance_mpi_new(slave_ldA, rdA, b, lambdaStart, gamma, 
 				  accel, regType, xvalue, step,
 				  nslaves, MPI_COMM_WORLD,
 				  TAG_AX, TAG_ATX, TAG_ATAX, TAG_DIE);
   
 
-  //Run ISTA
-  ISTAsolve_lite(instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF);
-  multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
-  //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
+  //RUN ISTA
+  for(j=0; j < numLambdas; j++) {
+    if(numLambdas > 1)
+      instance->lambda = lambdaStart - j * (lambdaStart - lambdaFinish) / (numLambdas - 1);
+
+    ISTAsolve_lite(instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF);
+    multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
+    //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
+
+    //print results
+    fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
+    for(i=0; i < rdA; i++)
+      {
+	fprintf(stdout, "%f ", xvalue[i]);
+      }
+    fprintf(stdout, "\n and here's the optimized A*x:\n");
+    for(i=0; i < total_ldA; i++)
+      {
+	fprintf(stdout, "%f ", result[i]);
+      }
+  }
 
 
-  //print results
-  fprintf(stdout, "Here's the optimized x:\n");
-  for(i=0; i < rdA; i++)
-    {
-      fprintf(stdout, "%f ", xvalue[i]);
-    }
-  fprintf(stdout, "\n and here's the optimized A*x:\n");
-  for(i=0; i < total_ldA; i++)
-    {
-      fprintf(stdout, "%f ", result[i]);
-    }
-
-
-  fprintf(stdout, "\nClosing the program\n");
 
   //CLOSE THE SLAVE PROCESSES AND FREE MEMORY
+  fprintf(stdout, "\nClosing the program\n");
   for(rank=1; rank <= nslaves; rank++)
     {
       MPI_Send(0, 0, MPI_INT, rank, TAG_DIE, MPI_COMM_WORLD);
     }
 
   free(result); ISTAinstance_mpi_free(instance);
-
 }
 
 
@@ -255,9 +258,11 @@ static void slave(int myrank, char* parameterFile)
   return;
 }
 
+
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, 
-			    int* slave_ldA, int* rdA, float* lambda, float* gamma, 
-			    float* step, char* regType, int* accel, 
+			    int* slave_ldA, int* rdA, 
+			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
+			    float* gamma, float* step, char* regType, int* accel, 
 			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF) {
   FILE *paramFile;
   paramFile = fopen(parameterFile, "r");
@@ -269,7 +274,9 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
   fscanf(paramFile, " FileNameForB : %32s", bfilename);
   fscanf(paramFile, " numRowsForSlave : %d", slave_ldA);
   fscanf(paramFile, " numCols : %d", rdA);
-  fscanf(paramFile, " RegularizationWeight : %16f", lambda);
+  fscanf(paramFile, " numLambdas : %d %*128[^\n]", numLambdas);
+  fscanf(paramFile, " lambdaStart : %16f", lambdaStart);
+  fscanf(paramFile, " lambdaFinish : %16f", lambdaFinish);
   fscanf(paramFile, " StepSizeDecretion : %16f", gamma);
   fscanf(paramFile, " InitialStep : %16f", step);
   fscanf(paramFile, " RegressionType : %4s", regType);
