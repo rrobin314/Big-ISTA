@@ -1,0 +1,12 @@
+FileNameForX0 : xinit.csv
+FileNameForB : yVector.csv
+numRowsForSlave : 2
+numCols : 100
+RegularizationWeight : 0.1
+StepSizeDecretion : 0.9
+InitialStep : 1.0
+RegressionType : l
+FistaAcceleration : 0
+MaximumIterations : 10000
+MinimumXDelta : 0.0001
+MinimumFuncDelta : 0.00001

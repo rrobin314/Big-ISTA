@@ -55,12 +55,10 @@ int main(int argc, char **argv)
 
 static void master(int nslaves, char* parameterFile)
 {
+  //Variable Declarations
   int rank, i, accel, MAX_ITER, slave_ldA, total_ldA, rdA;
-  //int slave_ldA=2;
-  //int total_ldA=nslaves*slave_ldA;
-  //int rdA=100;
   ISTAinstance_mpi* instance;
-  float *xvalue, *yvalue, *result, *b, lambda, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
+  float *xvalue, *result, *b, lambda, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
   char regType, xfilename[32], bfilename[32];
 
   //Get values from parameter file
@@ -71,37 +69,43 @@ static void master(int nslaves, char* parameterFile)
 
 
   //Allocate Memory
-  xvalue = malloc(rdA*sizeof(float));
-  yvalue = malloc(total_ldA*sizeof(float));
+  xvalue = calloc(rdA,sizeof(float));
   result = malloc((total_ldA+rdA)*sizeof(float));
   b      = malloc((total_ldA)*sizeof(float));
-  if(xvalue==NULL || result==NULL || yvalue==NULL || b==NULL)
+  if(xvalue==NULL || result==NULL || b==NULL)
     fprintf(stdout,"Unable to allocate memory!");
   
 
-  //Assign values to xvalue and b
-  
+  //Assign values to xvalue and b 
+  //For now we just assign x0 to be all zeros (see calloc above)  
   FILE* bfile;
+  float temp;
   bfile = fopen(bfilename, "r");
   if(bfile == NULL)
     fprintf(stderr, "bfile open failed!\n");
 
-  float temp;
   for(i=0; i<total_ldA; i++) {
     fscanf(bfile, " %32f ", &temp);
     b[i] = temp;
   }
   fclose(bfile);
 
-  for(i=0; i < rdA; i++)
-    {
-      xvalue[i] = (i+3) * 0.01;
-    }
-  //for(i=0; i < total_ldA; i++)
-  //  {
-  //   b[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
-  //}
+  /*
+  FILE* xfile;
+  xfile = fopen(xfilename, "r");
+  if(xfile == NULL)
+    fprintf(stderr, "xfile open failed!\n");
 
+  for(i=0; i<rdA; i++) {
+    fscanf(xfile, " %32f ", &temp);
+    xvalue[i] = temp;
+  }
+  fclose(xfile);
+  */
+
+
+
+  //Print Inputs
   fprintf(stdout, "Here's x:\n");
   for(i=0; i < rdA; i++)
     {
@@ -113,10 +117,7 @@ static void master(int nslaves, char* parameterFile)
       fprintf(stdout, "%f ", b[i]);
     }
   
-  //yvalue[0] = 1.0; yvalue[1] = 0.0; yvalue[2] = 0.0; 
-  //yvalue[3] = 1.0; yvalue[4] = 2.0; yvalue[5] = 0.0; 
-  //b[0]=0.5; b[1]=6.1; b[2]=5.0; b[3]=11.2; b[4]=7.5; b[5]=18.3;
-  
+
   //Create ISTA object
   instance = ISTAinstance_mpi_new(slave_ldA, rdA, b, lambda, gamma, 
 				  accel, regType, xvalue, step,
@@ -124,10 +125,11 @@ static void master(int nslaves, char* parameterFile)
 				  TAG_AX, TAG_ATX, TAG_ATAX, TAG_DIE);
   
 
-  //Do work!
+  //Run ISTA
   ISTAsolve_lite(instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF);
   multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
   //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
+
 
   //print results
   fprintf(stdout, "Here's the optimized x:\n");
@@ -142,37 +144,6 @@ static void master(int nslaves, char* parameterFile)
     }
 
 
-
-  /*
-  fprintf(stdout, "\nHere's A*x result:\n");
-  for(i=0; i < total_ldA; i++)
-    {
-      fprintf(stdout, "%f ", result[i]);
-    }
-
-  //Do more work!
-  //multiply_ATAx(xvalue, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATAX);
-  //result[0] = ISTAloss_func_mpi(xvalue, instance);
-  //fprintf(stdout, "\nHere's the loss: %f \n", result[0]);
-  ISTAgrad(instance);
-  fprintf(stdout, "\nHere's grad of x:\n");
-  for(i=0; i < rdA; i++)
-    {
-      fprintf(stdout, "%f ", (instance->gradvalue)[i]);
-    }
-
-
-  //print results
-  //  fprintf(stdout, "\nHere's A'*A*x result:\n");
-  //  for(i=0; i < rdA; i++)
-  //    {
-  //     fprintf(stdout, "%f ", result[i]);
-  //    }
-  */
-
-
-
-
   fprintf(stdout, "\nClosing the program\n");
 
   //CLOSE THE SLAVE PROCESSES AND FREE MEMORY
@@ -184,6 +155,9 @@ static void master(int nslaves, char* parameterFile)
   free(result); ISTAinstance_mpi_free(instance);
 
 }
+
+
+
 
 static void slave(int myrank, char* parameterFile)
 {

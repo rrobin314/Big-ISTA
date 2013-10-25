@@ -1,0 +1,3 @@
+MatrixFileName : XMatrix.csv
+numRows : 2
+numCols : 100
