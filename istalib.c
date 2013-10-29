@@ -183,7 +183,8 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float
       //UPDATE ITERATOR
       iter++;
     }
-
+  printf("iter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
+  printf("final regression function value: %f\n", ISTAregress_func(instance->xcurrent, instance) );
 }
 
 float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
