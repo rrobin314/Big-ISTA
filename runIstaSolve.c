@@ -29,7 +29,7 @@ int main(int argc, char **argv)
 		  &gamma, &step, &regType, &accel,
 		  &MAX_ITER, &MIN_XDIFF, &MIN_FUNCDIFF);
   //temp fix:
-  char tempFile[] = "MPIVersion/XMatrix_1000_10000.csv";
+  char tempFile[] = "MPIVersion/XMatrix_100_1000.csv";
 
   //ALLOCATE MEMORY
   float *A = malloc(ldA*rdA*sizeof(float));
@@ -74,17 +74,18 @@ int main(int argc, char **argv)
 		1.0, instance->A, instance->rdA, instance->xcurrent, 1, 0.0, result, 1);
 
     //print results
-    fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
+    /*    fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
     for(i=0; i < rdA; i++)
       {
 	fprintf(stdout, "%f ", instance->xcurrent[i]);
-      }
+	}
     fprintf(stdout, "\n and here's the optimized A*x:\n");
     for(i=0; i < ldA; i++)
       {
 	fprintf(stdout, "%f ", result[i]);
       }
     fprintf(stdout, "\n");
+    }*/
   }
 
 

@@ -50,6 +50,9 @@ ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float l
   if ( instance->gradvalue==NULL || instance->eta==NULL )
     fprintf(stdout, "Unable to allocate memory\n");
 
+  fprintf(stdout,"Created ISTA instance with parameters:\n nslaves: %d slave_ldA: %d ldA: %d rdA: %d \n lambda: %f gamma: %f accel: %d regType: %c step: %f  \n b[0]: %f b[last]: %f \n x[0]: %f x[last]: %f \n", nslaves, slave_ldA, instance->ldA, rdA, lambda, gamma, acceleration,
+	  regressionType, step, b[0], b[instance->ldA-1], xvalue[0], xvalue[rdA-1]);
+
   return instance;
 }
 
@@ -163,6 +166,8 @@ void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_XDIFF, f
   int iter=0;
   float xdiff=1;
   float funcdiff=1;
+
+  fprintf(stdout, "intial regression function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpi(instance->xcurrent, instance) );
 
   while(iter < MAX_ITER && xdiff > MIN_XDIFF && funcdiff > MIN_FUNCDIFF)
     {

@@ -106,7 +106,7 @@ static void master(int nslaves, char* parameterFile)
 
 
   //PRINT INPUTS
-  fprintf(stdout, "Here's x:\n");
+  /*  fprintf(stdout, "Here's x:\n");
   for(i=0; i < rdA; i++)
     {
       fprintf(stdout, "%f ", xvalue[i]);
@@ -116,7 +116,7 @@ static void master(int nslaves, char* parameterFile)
     {
       fprintf(stdout, "%f ", b[i]);
     }
-  
+  */
 
   //CREATE ISTA OBJECT
   instance = ISTAinstance_mpi_new(slave_ldA, rdA, b, lambdaStart, gamma, 
@@ -135,16 +135,16 @@ static void master(int nslaves, char* parameterFile)
     //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
 
     //print results
-    fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
-    for(i=0; i < rdA; i++)
+    /*fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
+        for(i=0; i < rdA; i++)
       {
 	fprintf(stdout, "%f ", xvalue[i]);
-      }
+	}
     fprintf(stdout, "\n and here's the optimized A*x:\n");
     for(i=0; i < total_ldA; i++)
       {
 	fprintf(stdout, "%f ", result[i]);
-      }
+	}*/
   }
 
 
@@ -186,7 +186,7 @@ static void slave(int myrank, char* parameterFile)
 
   //FILL A WITH DESIRED VALUES
   get_dat_matrix(A, ldA, rdA, myrank, matrixfilename);
-  fprintf(stdout,"A[99] for slave %d is %f \n", myrank, A[99]);
+  fprintf(stdout,"A[0] and A[last] for slave %d is %f and %f \n", myrank, A[0], A[ldA*rdA-1]);
 
   //COMPUTATION LOOP
   while(1)

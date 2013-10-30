@@ -40,6 +40,9 @@ ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambd
   if ( instance->gradvalue==NULL || instance->eta==NULL )
     printf("Unable to allocate memory\n");
 
+  fprintf(stdout,"Created ISTA instance with parameters:\n ldA: %d rdA: %d lambda: %f gamma: %f accel: %d regType: %c step: %f \n A[0]: %f A[last]: %f \n b[0]: %f b[last]: %f \n x[0]: %f x[last]: %f \n", ldA, rdA, lambda, gamma, acceleration,
+	  regressionType, step, A[0], A[rdA*ldA-1], b[0], b[ldA-1], xvalue[0], xvalue[rdA-1]);
+
   return instance;
 }
 
@@ -153,6 +156,8 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float
   float xdiff=1;
   float funcdiff=1;
 
+  printf("intial regression function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) );
+
   while(iter < MAX_ITER && xdiff > MIN_XDIFF && funcdiff > MIN_FUNCDIFF)
     {
       cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->xprevious, 1); //set xprevious to xcurrent
@@ -184,7 +189,7 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float
       iter++;
     }
   printf("iter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
-  printf("final regression function value: %f\n", ISTAregress_func(instance->xcurrent, instance) );
+  printf("final regression function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) );
 }
 
 float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
