@@ -13,23 +13,24 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 static void getMatrix(float* A, int ldA, int rdA, char* Afilename);
 static void getVector(float* b, int lengthb, char* bfilename);
 
+#define MAX_FILENAME_SIZE 32
+
 int main(int argc, char **argv)
 {
   //srand(time(NULL));
   int i, j, ldA, rdA, accel, MAX_ITER, numLambdas;
   float lambdaStart, lambdaFinish, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
-  char xfilename[32], bfilename[32], Matrixfilename[32], regType;
-
-  Matrixfilename[0] = 'X';
-  Matrixfilename[1] = '\0';
+  char regType;
+  char* xfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
+  char* bfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
+  char* Matrixfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
 
   //GET PARAMETERS FROM TXT FILE
   getMasterParams(argv[1], xfilename, bfilename, Matrixfilename, &ldA, &rdA,
 		  &numLambdas, &lambdaStart, &lambdaFinish,
 		  &gamma, &step, &regType, &accel,
 		  &MAX_ITER, &MIN_XDIFF, &MIN_FUNCDIFF);
-  //temp fix:
-  char tempFile[] = "MPIVersion/XMatrix_100_1000.csv";
+
 
   //ALLOCATE MEMORY
   float *A = malloc(ldA*rdA*sizeof(float));
@@ -41,8 +42,7 @@ int main(int argc, char **argv)
 
   //READ IN A AND b FROM FILE
   fprintf(stderr, "filenames are: %s and %s and %s\n", xfilename, Matrixfilename, bfilename);
-  fprintf(stderr, "other parameters: %d and %d\n", ldA, rdA);
-  getMatrix(A, ldA, rdA, tempFile);
+  getMatrix(A, ldA, rdA, Matrixfilename);
   getVector(b, ldA, bfilename);
 
   //PRINT INPUTS
@@ -56,8 +56,6 @@ int main(int argc, char **argv)
     {
       fprintf(stdout, "%f ", b[i]);
       }*/
-  fprintf(stdout, "\nthe first and last entries of b are: %f %f\n", b[0], b[ldA-1]);
-  fprintf(stdout, "the first and last entries of A are: %f %f\n", A[0], A[ldA*rdA-1]);
 
 
   //Initialize ISTAinstance
@@ -91,6 +89,7 @@ int main(int argc, char **argv)
 
   //FREE MEMORY
   ISTAinstance_free(instance); free(result);
+  free(xfilename); free(bfilename); free(Matrixfilename);
 
   return 0;
 }
