@@ -10,7 +10,7 @@
 #define TAG_ATX 832
 #define TAG_DIE 451
 #define TAG_ATAX 674
-#define MAX_FILENAME_SIZE 32
+#define MAX_FILENAME_SIZE 64
 
 static void master(int nslaves, char* parameterFile);
 static void slave(int myrank, char* parameterFile);
@@ -22,22 +22,15 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 			    int* MAX_ITER, float* MIN_FUNCDIFF);
 static void getVector(float* b, int lengthb, char* bfilename);
 
-//Time wasn't working well to seed the random number generator.
-//This function counts the number of cycles since the processor was
-//turned on.  We use this to seed rand()
-unsigned long long rdtsc(){
-    unsigned int lo,hi;
-    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-    return ((unsigned long long)hi << 32) | lo;
-}
 
 int main(int argc, char **argv)
 {
-  srand(rdtsc());
   int myrank, nslaves;
+  double t1, t2;
 
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+  t1 = MPI_Wtime();
 
   //Get number of slaves by getting total number and subtracting 1
   MPI_Comm_size(MPI_COMM_WORLD, &nslaves);
@@ -51,6 +44,10 @@ int main(int argc, char **argv)
     {
       slave(myrank, argv[2]);
     }
+
+  t2 = MPI_Wtime();
+  if(myrank==0)
+    fprintf(stdout, "Elapsed time is %f \n", t2-t1);
 
   MPI_Finalize();
   return 0;
@@ -133,7 +130,7 @@ static void master(int nslaves, char* parameterFile)
 
 
   //CLOSE THE SLAVE PROCESSES AND FREE MEMORY
-  fprintf(stdout, "\nClosing the program\n");
+  fprintf(stdout, "Closing the program\n");
   for(rank=1; rank <= nslaves; rank++)
     {
       MPI_Send(0, 0, MPI_INT, rank, TAG_DIE, MPI_COMM_WORLD);
@@ -254,8 +251,8 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
     fprintf(stderr, "ParamFile Open Failed!\n");
 
   //Read parameters:
-  fscanf(paramFile, "FileNameForX0 : %32s", xfilename);
-  fscanf(paramFile, " FileNameForB : %32s", bfilename);
+  fscanf(paramFile, "FileNameForX0 : %63s", xfilename);
+  fscanf(paramFile, " FileNameForB : %63s", bfilename);
   fscanf(paramFile, " numRowsForSlave : %d", slave_ldA);
   fscanf(paramFile, " numCols : %d", rdA);
   fscanf(paramFile, " numLambdas : %d %*128[^\n]", numLambdas);
@@ -280,7 +277,7 @@ static void getSlaveParams(char* parameterFile, int* ldA, int* rdA, char* matrix
   if(paramFile == NULL)
     fprintf(stderr, "ParamFile Open Failed!\n");
 
-  fscanf(paramFile, "MatrixFileName : %32s", matrixfilename);
+  fscanf(paramFile, "MatrixFileName : %63s", matrixfilename);
   fscanf(paramFile, " numRows : %d", ldA);
   fscanf(paramFile, " numCols : %d", rdA);
 

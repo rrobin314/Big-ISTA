@@ -307,7 +307,7 @@ void ISTAbacktrack(ISTAinstance* instance)
   int numTrials = 0;
   float difference;
 
-  /* calculate gradient at current searchPoint */
+  // calculate gradient at current searchPoint 
   ISTAgrad(instance);
   
   do
@@ -315,12 +315,12 @@ void ISTAbacktrack(ISTAinstance* instance)
     if(numTrials > 0) /*dont update stepsize the first time through */
       *(instance->stepsize) *= instance->gamma;
 
-    /*update xcurrent = soft(  searchPoint - stepsize*gradvalue , lambda*stepsize )  */
+    //update xcurrent = soft(  searchPoint - stepsize*gradvalue , lambda*stepsize )  
     cblas_scopy(instance->rdA, instance->searchPoint, 1, instance->xcurrent, 1);
     cblas_saxpy(instance->rdA, -(*(instance->stepsize)), instance->gradvalue, 1, instance->xcurrent, 1);
     soft_threshold(instance->xcurrent, instance->rdA, instance->lambda * (*(instance->stepsize)));
 
-    /*calculate difference that, when negative, guarantees the objective function decreases */
+    //calculate difference that, when negative, guarantees the objective function decreases 
     difference = ISTAregress_func(instance->xcurrent, instance) - 
 	         ISTAregress_func(instance->searchPoint, instance);
     cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->eta, 1);

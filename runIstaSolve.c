@@ -13,7 +13,7 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 static void getMatrix(float* A, int ldA, int rdA, char* Afilename);
 static void getVector(float* b, int lengthb, char* bfilename);
 
-#define MAX_FILENAME_SIZE 32
+#define MAX_FILENAME_SIZE 64
 
 int main(int argc, char **argv)
 {
@@ -107,9 +107,9 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
     fprintf(stderr, "ParamFile Open Failed!\n");
 
   //Read parameters:
-  fscanf(paramFile, "FileNameForX0 : %31s", xfilename);
-  fscanf(paramFile, " FileNameForB : %31s", bfilename);
-  fscanf(paramFile, " FileNameForA : %31s", Matrixfilename);
+  fscanf(paramFile, "FileNameForX0 : %63s", xfilename);
+  fscanf(paramFile, " FileNameForB : %63s", bfilename);
+  fscanf(paramFile, " FileNameForA : %63s", Matrixfilename);
   fscanf(paramFile, " numRows : %d", ldA);
   fscanf(paramFile, " numCols : %d", rdA);
   fscanf(paramFile, " numLambdas : %d %*128[^\n]", numLambdas);
