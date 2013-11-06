@@ -10,6 +10,7 @@
 #define TAG_ATX 832
 #define TAG_DIE 451
 #define TAG_ATAX 674
+#define MAX_FILENAME_SIZE 32
 
 static void master(int nslaves, char* parameterFile);
 static void slave(int myrank, char* parameterFile);
@@ -18,7 +19,8 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 			    int* slave_ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
-			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF);
+			    int* MAX_ITER, float* MIN_FUNCDIFF);
+static void getVector(float* b, int lengthb, char* bfilename);
 
 //Time wasn't working well to seed the random number generator.
 //This function counts the number of cycles since the processor was
@@ -59,13 +61,13 @@ static void master(int nslaves, char* parameterFile)
   //VARIABLE DECLARATIONS
   int rank, i, j, accel, MAX_ITER, slave_ldA, total_ldA, rdA, numLambdas;
   ISTAinstance_mpi* instance;
-  float *xvalue, *result, *b, lambdaStart, lambdaFinish, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
-  char regType, xfilename[32], bfilename[32];
+  float *xvalue, *result, *b, lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
+  char regType, xfilename[MAX_FILENAME_SIZE], bfilename[MAX_FILENAME_SIZE];
 
   //GET VALUES FROM PARAMETER FILE
   getMasterParams(parameterFile, xfilename, bfilename, &slave_ldA, &rdA, 
 		  &numLambdas, &lambdaStart, &lambdaFinish, &gamma, &step, &regType, &accel, 
-		  &MAX_ITER, &MIN_XDIFF, &MIN_FUNCDIFF);
+		  &MAX_ITER, &MIN_FUNCDIFF);
   total_ldA = nslaves*slave_ldA;
 
 
@@ -79,32 +81,9 @@ static void master(int nslaves, char* parameterFile)
 
   //ASSIGN VALUES TO XVALUE AND B
   //For now we just assign x0 to be all zeros (see calloc above)  
-  FILE* bfile;
-  float temp;
-  bfile = fopen(bfilename, "r");
-  if(bfile == NULL)
-    fprintf(stderr, "bfile open failed!\n");
-
-  for(i=0; i<total_ldA; i++) {
-    fscanf(bfile, " %32f ", &temp);
-    b[i] = temp;
-  }
-  fclose(bfile);
-  /*
-  FILE* xfile;
-  xfile = fopen(xfilename, "r");
-  if(xfile == NULL)
-    fprintf(stderr, "xfile open failed!\n");
-
-  for(i=0; i<rdA; i++) {
-    fscanf(xfile, " %32f ", &temp);
-    xvalue[i] = temp;
-  }
-  fclose(xfile);
-  */
-
-
-
+  getVector(b, total_ldA, bfilename);
+  //getVector(xvalue, rdA, xfilename);
+  
   //PRINT INPUTS
   /*  fprintf(stdout, "Here's x:\n");
   for(i=0; i < rdA; i++)
@@ -127,12 +106,15 @@ static void master(int nslaves, char* parameterFile)
 
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
-    if(numLambdas > 1)
-      instance->lambda = lambdaStart - j * (lambdaStart - lambdaFinish) / (numLambdas - 1);
+    if(numLambdas > 1) {
+      instance->lambda = lambdaStart * exp( log(lambdaFinish / lambdaStart) * j / (numLambdas - 1) );
+      //instance->lambda = lambdaStart - j * (lambdaStart - lambdaFinish) / (numLambdas - 1);
+    }
 
-    ISTAsolve_lite(instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF);
-    multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
+    ISTAsolve_lite(instance, MAX_ITER, MIN_FUNCDIFF);
+    //multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
     //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
+
 
     //print results
     /*fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
@@ -145,6 +127,7 @@ static void master(int nslaves, char* parameterFile)
       {
 	fprintf(stdout, "%f ", result[i]);
 	}*/
+    fprintf(stdout, "\n");
   }
 
 
@@ -157,6 +140,7 @@ static void master(int nslaves, char* parameterFile)
     }
 
   free(result); ISTAinstance_mpi_free(instance);
+  return;
 }
 
 
@@ -167,7 +151,7 @@ static void slave(int myrank, char* parameterFile)
   int dummyInt, ldA, rdA;
   MPI_Status status;
   float *A, *xvalue, *resultVector, *tempHolder, *dummyFloat;
-  char matrixfilename[32];
+  char matrixfilename[MAX_FILENAME_SIZE];
 
   //GET PARAMETERS FROM THE TEXT FILE
   getSlaveParams(parameterFile, &ldA, &rdA, matrixfilename);
@@ -263,7 +247,7 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 			    int* slave_ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
-			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF) {
+			    int* MAX_ITER, float* MIN_FUNCDIFF) {
   FILE *paramFile;
   paramFile = fopen(parameterFile, "r");
   if(paramFile == NULL)
@@ -282,7 +266,6 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
   fscanf(paramFile, " RegressionType : %4s", regType);
   fscanf(paramFile, " FistaAcceleration : %d", accel);
   fscanf(paramFile, " MaximumIterations : %d", MAX_ITER);
-  fscanf(paramFile, " MinimumXDelta : %16f", MIN_XDIFF);
   fscanf(paramFile, " MinimumFuncDelta : %16f", MIN_FUNCDIFF);
 
   fclose(paramFile);
@@ -300,6 +283,23 @@ static void getSlaveParams(char* parameterFile, int* ldA, int* rdA, char* matrix
   fscanf(paramFile, "MatrixFileName : %32s", matrixfilename);
   fscanf(paramFile, " numRows : %d", ldA);
   fscanf(paramFile, " numCols : %d", rdA);
+
+  fclose(paramFile);
+  return;
+}
+
+static void getVector(float* b, int lengthb, char* bfilename) {
+  FILE *paramFile;
+  paramFile = fopen(bfilename, "r");
+  if(paramFile == NULL)
+    fprintf(stderr, "VectorFile Open Failed!\n");
+
+  int i;
+  float value;
+  for(i=0; i<lengthb; i++) {
+    fscanf(paramFile, " %32f , ", &value);
+    b[i] = value;
+  }
 
   fclose(paramFile);
   return;

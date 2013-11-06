@@ -43,7 +43,7 @@ extern void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float 
 // This version of ISTAsolve does not allocate any memory
 // and is meant to be used with ISTAinstance_new and ISTAinstance_free to handle
 // memory allocation.
-extern void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
+extern void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_FUNCDIFF );
 
 // Applies ISTAsolve_lite to instance for a series of lambdas.
 // All solutions are returned in the double pointer.

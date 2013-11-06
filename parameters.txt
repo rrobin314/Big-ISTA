@@ -1,15 +1,14 @@
 FileNameForX0 : xinit.csv
-FileNameForB : MPIVersion/yVector_1000.csv
-FileNameForA : XMatrix_3_4.csv
-numRows : 1000
-numCols : 10000
+FileNameForB : MPIVersion/yVector_100.csv
+FileNameForA : MPIVersion/XMatrix_100_1000.csv
+numRows : 100
+numCols : 1000
 numLambdas : 1 (lambda is the weight we put on the regularization function)
 lambdaStart : 0.1
-lambdaFinish : 0.01
+lambdaFinish : 0.1
 StepSizeDecretion : 0.9
 InitialStep : 1.0
 RegressionType : l
-FistaAcceleration : 0
+FistaAcceleration : 1
 MaximumIterations : 10000
-MinimumXDelta : 0.0001
-MinimumFuncDelta : 0.00001
+MinimumFuncDelta : 0.0001

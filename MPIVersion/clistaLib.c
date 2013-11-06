@@ -158,18 +158,17 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
 
 */
 
-void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
+void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDIFF )
 {
   // This version of ISTAsolve solve does not allocate any memory
 
   //Initialize stop values:
   int iter=0;
-  float xdiff=1;
   float funcdiff=1;
 
-  fprintf(stdout, "intial regression function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpi(instance->xcurrent, instance) );
+  fprintf(stdout, "intial objective function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpi(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 
-  while(iter < MAX_ITER && xdiff > MIN_XDIFF && funcdiff > MIN_FUNCDIFF)
+  while(iter < MAX_ITER && funcdiff > MIN_FUNCDIFF)
     {
       cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->xprevious, 1); //set xprevious to xcurrent
 
@@ -178,11 +177,11 @@ void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_XDIFF, f
 
       //UPDATE TERMINATING VALUES
       cblas_saxpy(instance->rdA, -1.0, instance->xcurrent, 1, instance->xprevious, 1); //xprevious now holds "xprevious - xcurrent"
-      xdiff = cblas_snrm2(instance->rdA, instance->xprevious, 1);
+      //xdiff = cblas_snrm2(instance->rdA, instance->xprevious, 1);
 
-      funcdiff = ISTAloss_func_mpi(instance->searchPoint, instance) - ISTAloss_func_mpi(instance->xcurrent, instance);
-      funcdiff += instance->lambda * cblas_sasum(instance->rdA, instance->searchPoint, 1);
-      funcdiff -= instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1);
+      funcdiff = ISTAloss_func_mpi(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1);
+      funcdiff = funcdiff / (ISTAloss_func_mpi(instance->searchPoint, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->searchPoint, 1) );
+      funcdiff = 1 - funcdiff;
 
       //UPDATE SEARCHPOINT
       if( instance->acceleration ) //FISTA searchpoint
@@ -200,8 +199,8 @@ void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_XDIFF, f
       iter++;
     }
 
-  fprintf(stdout, "\niter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
-  fprintf(stdout, "final regression function value: %f\n", ISTAloss_func_mpi(instance->xcurrent, instance) );
+  fprintf(stdout, "iter: %d funcdiff: %f\n", iter, funcdiff);
+  fprintf(stdout, "final objective function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpi(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 
 }
 
@@ -406,9 +405,10 @@ extern void ISTAgrad(ISTAinstance_mpi* instance)
       cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*searchPoint - b
 
       //NOTE: WE ARE MISSING THE SCALAR 2 IN THIS CALCULATION, DOES THIS MATTER?
+      //ANSWER: Yes, it matter a lot! Added an addition sscal call to fix.
       multiply_ATx(instance->eta, instance->ldA, instance->slave_ldA, instance->rdA,
 		   instance->gradvalue, instance->nslaves, instance->comm, instance->tag_atx);
-
+      cblas_sscal(instance->rdA, 2.0, instance->gradvalue, 1);
       break;
       
     case 'o': // Here we calculate the gradient:A'*(p(A*searchPoint) - b) where p is the logistic function 
@@ -583,7 +583,7 @@ void soft_threshold(float* xvalue, int xlength, float threshold)
     }
 }
 
-extern void multiply_Ax(float* xvalue, int lenx, int ldA, float* result, int nslaves, MPI_Comm comm, int TAG)
+extern void multiply_Ax(float* xvalue, int lenx, int slave_ldA, float* result, int nslaves, MPI_Comm comm, int TAG)
 {
   int rank;
   float* temp;
@@ -593,8 +593,8 @@ extern void multiply_Ax(float* xvalue, int lenx, int ldA, float* result, int nsl
     fprintf(stdout,"Unable to allocate memory!");
   for(rank=1; rank <= nslaves; rank++)
     {
-      counts[rank] = ldA;
-      displacements[rank] = ldA*(rank-1);
+      counts[rank] = slave_ldA;
+      displacements[rank] = slave_ldA*(rank-1);
     }
 
 
@@ -690,7 +690,7 @@ extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank, char* filenam
   float value;
   int row, col;
 
-  fprintf(stdout, "\nProcess %d getting matrix entries\n", myrank);
+  //fprintf(stdout, "\nProcess %d getting matrix entries\n", myrank);
   for(row=0; row<ldA; row++) {
     for(col=0; col<rdA; col++) {
       fscanf(matrixfile, "%32f", &value);

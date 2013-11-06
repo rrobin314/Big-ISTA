@@ -1,3 +1,3 @@
-MatrixFileName : XMatrix.csv
-numRows : 10
-numCols : 100
+MatrixFileName : XMatrix_100_1000.csv
+numRows : 50
+numCols : 1000

@@ -62,7 +62,7 @@ extern void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float 
 // This version of ISTAsolve does not allocate any memory
 // and is meant to be used with ISTAinstance_new and ISTAinstance_free to handle
 // memory allocation.
-extern void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
+extern void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDIFF );
 
 /*
 
@@ -120,7 +120,7 @@ extern void soft_threshold(float* xvalue, int xlength, float threshold);
 //Routine that uses MPI to calculate the matrix-vector product A*xvalue and stores it in result
 //Note: ldA refers to the slave_ldA, i.e. the left dimension of the small A stored in a slave node
 //      lenx is the length of xvalue
-extern void multiply_Ax(float* xvalue, int lenx, int ldA, float* result, int nslaves, MPI_Comm comm, int TAG);
+extern void multiply_Ax(float* xvalue, int lenx, int slave_ldA, float* result, int nslaves, MPI_Comm comm, int TAG);
 
 //Same as multiply_Ax, but with A'
 extern void multiply_ATx(float* xvalue, int lenx, int slave_ldA, int rdA, float* result, int nslaves, MPI_Comm comm, int TAG);

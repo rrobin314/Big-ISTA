@@ -147,18 +147,17 @@ void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma,
 									       
 }
 
-void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF )
+void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_FUNCDIFF )
 {
   // This version of ISTAsolve solve does not allocate any memory
 
   //Initialize stop values:
   int iter=0;
-  float xdiff=1;
   float funcdiff=1;
 
-  printf("intial regression function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) );
+  printf("intial objective function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 
-  while(iter < MAX_ITER && xdiff > MIN_XDIFF && funcdiff > MIN_FUNCDIFF)
+  while(iter < MAX_ITER && funcdiff > MIN_FUNCDIFF)
     {
       cblas_scopy(instance->rdA, instance->xcurrent, 1, instance->xprevious, 1); //set xprevious to xcurrent
 
@@ -167,11 +166,15 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float
 
       //UPDATE TERMINATING VALUES
       cblas_saxpy(instance->rdA, -1.0, instance->xcurrent, 1, instance->xprevious, 1); //xprevious now holds "xprevious - xcurrent"
-      xdiff = cblas_snrm2(instance->rdA, instance->xprevious, 1);
+      //xdiff = cblas_snrm2(instance->rdA, instance->xprevious, 1);
 
-      funcdiff = ISTAregress_func(instance->searchPoint, instance) - ISTAregress_func(instance->xcurrent, instance);
+      /*funcdiff = ISTAregress_func(instance->searchPoint, instance) - ISTAregress_func(instance->xcurrent, instance);
       funcdiff += instance->lambda * cblas_sasum(instance->rdA, instance->searchPoint, 1);
       funcdiff -= instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1);
+      */
+      funcdiff = ISTAregress_func(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1);
+      funcdiff = funcdiff / (ISTAregress_func(instance->searchPoint, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->searchPoint, 1) );
+      funcdiff = 1 - funcdiff;
 
       //UPDATE SEARCHPOINT
       if( instance->acceleration ) //FISTA searchpoint
@@ -188,8 +191,8 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_XDIFF, float
       //UPDATE ITERATOR
       iter++;
     }
-  printf("iter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
-  printf("final regression function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) );
+  printf("iter: %d funcdiff: %f\n", iter, funcdiff);
+  printf("final objective function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 }
 
 float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
@@ -209,7 +212,7 @@ float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instan
       instance->lambda = lambdas[i];
 
       // Solve with new lambda value
-      ISTAsolve_lite( instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF );
+      ISTAsolve_lite( instance, MAX_ITER, MIN_FUNCDIFF );
 
       // record solution in values[i]
       values[i] = malloc( (instance->rdA) * sizeof(float) );

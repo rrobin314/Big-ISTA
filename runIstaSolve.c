@@ -8,7 +8,7 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 			    int* ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
-			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF);
+			    int* MAX_ITER, float* MIN_FUNCDIFF);
 
 static void getMatrix(float* A, int ldA, int rdA, char* Afilename);
 static void getVector(float* b, int lengthb, char* bfilename);
@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 {
   //srand(time(NULL));
   int i, j, ldA, rdA, accel, MAX_ITER, numLambdas;
-  float lambdaStart, lambdaFinish, gamma, step, MIN_XDIFF, MIN_FUNCDIFF;
+  float lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
   char regType;
   char* xfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
   char* bfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
@@ -29,7 +29,7 @@ int main(int argc, char **argv)
   getMasterParams(argv[1], xfilename, bfilename, Matrixfilename, &ldA, &rdA,
 		  &numLambdas, &lambdaStart, &lambdaFinish,
 		  &gamma, &step, &regType, &accel,
-		  &MAX_ITER, &MIN_XDIFF, &MIN_FUNCDIFF);
+		  &MAX_ITER, &MIN_FUNCDIFF);
 
 
   //ALLOCATE MEMORY
@@ -64,10 +64,12 @@ int main(int argc, char **argv)
 
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
-    if(numLambdas > 1)
-      instance->lambda = lambdaStart - j * (lambdaStart - lambdaFinish) / (numLambdas - 1);
+    if(numLambdas > 1) {
+      instance->lambda = lambdaStart * exp( log(lambdaFinish / lambdaStart) * j / (numLambdas - 1) );
+      //instance->lambda = lambdaStart - j * (lambdaStart - lambdaFinish) / (numLambdas - 1);
+    }
 
-    ISTAsolve_lite(instance, MAX_ITER, MIN_XDIFF, MIN_FUNCDIFF);
+    ISTAsolve_lite(instance, MAX_ITER, MIN_FUNCDIFF);
     cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 
 		1.0, instance->A, instance->rdA, instance->xcurrent, 1, 0.0, result, 1);
 
@@ -81,9 +83,8 @@ int main(int argc, char **argv)
     for(i=0; i < ldA; i++)
       {
 	fprintf(stdout, "%f ", result[i]);
-      }
+	}*/
     fprintf(stdout, "\n");
-    }*/
   }
 
 
@@ -99,7 +100,7 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 			    int* ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
-			    int* MAX_ITER, float* MIN_XDIFF, float* MIN_FUNCDIFF) {
+			    int* MAX_ITER, float* MIN_FUNCDIFF) {
   FILE *paramFile;
   paramFile = fopen(parameterFile, "r");
   if(paramFile == NULL)
@@ -119,7 +120,6 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
   fscanf(paramFile, " RegressionType : %4s", regType);
   fscanf(paramFile, " FistaAcceleration : %d", accel);
   fscanf(paramFile, " MaximumIterations : %d", MAX_ITER);
-  fscanf(paramFile, " MinimumXDelta : %16f", MIN_XDIFF);
   fscanf(paramFile, " MinimumFuncDelta : %16f", MIN_FUNCDIFF);
 
   fclose(paramFile);
