@@ -544,3 +544,37 @@ void soft_threshold(float* xvalue, int xlength, float threshold)
 	xvalue[i] = 0;
     }
 }
+
+extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart, 
+			float lambdaFinish, float* A, int ldA, int rdA, 
+			float* b, float* result)
+{
+  float startValue;
+
+  //IF lambdaStart is negative, then do automatic calculation of startValue
+  if(lambdaStart <= 0) {
+    //result = A' * b
+    cblas_sgemv(CblasRowMajor, CblasTrans, ldA, rdA, 1.0, A, rdA,
+		b, 1, 0.0, result, 1);
+    //i = index of max in absolute value of result
+    //With lambda = result[i], 0 will be an optimal solution of our optimization
+    CBLAS_INDEX i = cblas_isamax(rdA, result, 1);
+    startValue = abs(result[i]) / 2.0;
+  }
+  else if(lambdaStart > 0) {
+    startValue = lambdaStart;
+  }
+
+  //Fill in lambdas with exponential path from startValue to lambdaFinish
+  if(numLambdas == 1) {
+    lambdas[0] = lambdaFinish;
+  }
+  else if(numLambdas >= 2) {
+    int j;
+    for(j=0; j < numLambdas; j++) {
+      lambdas[j] = startValue * exp( log(lambdaFinish / startValue) * j / (numLambdas - 1) );
+      //lambdas[j] = startValue - j * (startValue - lambdaFinish) / (numLambdas - 1);
+    }
+  }
+
+}

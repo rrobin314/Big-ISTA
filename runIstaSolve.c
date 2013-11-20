@@ -1,17 +1,20 @@
 #include<stdio.h>
 #include<stdlib.h>
+#include<string.h>
 #include<math.h>
 #include<cblas.h>
 #include"istalib.h"
 
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, char* Matrixfilename, 
-			    int* ldA, int* rdA, 
+			    char* outfilename, int* ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
 			    int* MAX_ITER, float* MIN_FUNCDIFF);
 
 static void getMatrix(float* A, int ldA, int rdA, char* Afilename);
 static void getVector(float* b, int lengthb, char* bfilename);
+static void writeResults(ISTAinstance* instance, char* outfilename, 
+			 char* Matrixfilename, char* bfilename, float finalLambda);
 
 #define MAX_FILENAME_SIZE 64
 
@@ -24,9 +27,10 @@ int main(int argc, char **argv)
   char* xfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
   char* bfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
   char* Matrixfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
+  char* outfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
 
   //GET PARAMETERS FROM TXT FILE
-  getMasterParams(argv[1], xfilename, bfilename, Matrixfilename, &ldA, &rdA,
+  getMasterParams(argv[1], xfilename, bfilename, Matrixfilename, outfilename, &ldA, &rdA,
 		  &numLambdas, &lambdaStart, &lambdaFinish,
 		  &gamma, &step, &regType, &accel,
 		  &MAX_ITER, &MIN_FUNCDIFF);
@@ -36,8 +40,9 @@ int main(int argc, char **argv)
   float *A = malloc(ldA*rdA*sizeof(float));
   float *b = malloc(ldA*sizeof(float));
   float *x0 = calloc(rdA, sizeof(float)); //Currently, we always intialize x0 to zero
-  float *result = malloc(ldA*sizeof(float));
-  if(A==NULL || b==NULL || x0==NULL || result==NULL)
+  float *lambdas = malloc(numLambdas*sizeof(float));
+  float *result = malloc((ldA+rdA)*sizeof(float));
+  if(A==NULL || b==NULL || x0==NULL || result==NULL || lambdas==NULL)
     fprintf(stderr, "Memory Allocation Failed!");
 
   //READ IN A AND b FROM FILE
@@ -57,17 +62,17 @@ int main(int argc, char **argv)
       fprintf(stdout, "%f ", b[i]);
       }*/
 
+  //CALCULATE LAMBDA PATH
+  calcLambdas(lambdas, numLambdas, lambdaStart, lambdaFinish, A, ldA, rdA, b, result);
 
   //Initialize ISTAinstance
-  ISTAinstance* instance = ISTAinstance_new(A, ldA, rdA, b, lambdaStart, 
+  ISTAinstance* instance = ISTAinstance_new(A, ldA, rdA, b, lambdas[0], 
 					    gamma, accel, regType, x0, step);
 
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
-    if(numLambdas > 1) {
-      instance->lambda = lambdaStart * exp( log(lambdaFinish / lambdaStart) * j / (numLambdas - 1) );
-      //instance->lambda = lambdaStart - j * (lambdaStart - lambdaFinish) / (numLambdas - 1);
-    }
+    if(j > 0)
+      instance->lambda = lambdas[j];
 
     ISTAsolve_lite(instance, MAX_ITER, MIN_FUNCDIFF);
     cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 
@@ -87,9 +92,14 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n");
   }
 
+  //WRITE RESULTS TO FILE:
+  writeResults(instance, outfilename, Matrixfilename, bfilename, lambdas[numLambdas-1]);
+
+  
+
 
   //FREE MEMORY
-  ISTAinstance_free(instance); free(result);
+  ISTAinstance_free(instance); free(result); free(lambdas);
   free(xfilename); free(bfilename); free(Matrixfilename);
 
   return 0;
@@ -97,7 +107,7 @@ int main(int argc, char **argv)
 
 
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, char* Matrixfilename,
-			    int* ldA, int* rdA, 
+			    char* outfilename, int* ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
 			    int* MAX_ITER, float* MIN_FUNCDIFF) {
@@ -110,6 +120,7 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
   fscanf(paramFile, "FileNameForX0 : %63s", xfilename);
   fscanf(paramFile, " FileNameForB : %63s", bfilename);
   fscanf(paramFile, " FileNameForA : %63s", Matrixfilename);
+  fscanf(paramFile, " OutputFile : %63s", outfilename);
   fscanf(paramFile, " numRows : %d", ldA);
   fscanf(paramFile, " numCols : %d", rdA);
   fscanf(paramFile, " numLambdas : %d %*128[^\n]", numLambdas);
@@ -158,4 +169,28 @@ static void getVector(float* b, int lengthb, char* bfilename) {
 
   fclose(paramFile);
   return;
+}
+
+static void writeResults(ISTAinstance* instance, char* outfilename, 
+			 char* Matrixfilename, char* bfilename, float finalLambda) {
+  char regForm[10] = "linear";
+  char accelForm[10] = "FISTA";
+  int i;
+
+  if(instance->regressionType == 'o')
+    strcpy(regForm, "logistic");
+  if(instance->acceleration == 0)
+    strcpy(accelForm, "ISTA");
+  
+  FILE* outFILE;
+  outFILE = fopen(outfilename,"w");
+  if(outFILE!=NULL) {
+    fprintf(outFILE, "Results for %s regression using %s algorithm. \n", regForm, accelForm);
+    fprintf(outFILE, "Using data from:\nMatrix File %s \nVector File %s \n", Matrixfilename, bfilename);
+    fprintf(outFILE, "and final regularization weight %f \n\nFINAL X VECTOR:\n", finalLambda);
+    for(i=0; i < instance->rdA; i++) {
+      fprintf(outFILE, "%f \n", instance->xcurrent[i]);
+    }
+    fclose(outFILE);
+  }
 }

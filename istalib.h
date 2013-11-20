@@ -85,3 +85,16 @@ extern float ISTAregress_func(float* xvalue, ISTAinstance* instance);
 extern float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold);
 
 extern void soft_threshold(float* xvalue, int xlength, float threshold);
+
+// Calculates a path of lambdas to solve on:
+// If lambdaStart > 0, then our starting path is just lambdaStart
+// If lambdaStart < 0, then we calculate our starting point to be:
+//     0.5 * || A' * b ||_infinity
+// 
+// If numLambdas == 1, then our path just consists of lambdaFinish
+// If numLambdas > 1, then we draw an exponential curve between
+// the starting point and lambdaFinish
+extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart, 
+			float lambdaFinish, float* A, int ldA, int rdA, 
+			float* b, float* result);
+
