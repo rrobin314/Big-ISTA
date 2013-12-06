@@ -69,6 +69,25 @@ int main(int argc, char **argv)
   ISTAinstance* instance = ISTAinstance_new(A, ldA, rdA, b, lambdas[0], 
 					    gamma, accel, regType, x0, step);
 
+  //CENTER AND NORMALIZE COLUMNS OF A
+  ISTArescale(instance);
+  /*fprintf(stdout, "Here's scaleFactors:\n");
+  for(i=0; i < rdA; i++)
+    {
+      fprintf(stdout, "%f ", instance->scalingFactors[i]);
+    }
+  fprintf(stdout, "\nHere's meanShifts:\n");
+  for(i=0; i < rdA; i++)
+    {
+      fprintf(stdout, "%f ", instance->meanShifts[i]);
+    }
+  fprintf(stdout, "\nHere's the first row of A:\n");
+  for(i=0; i < rdA; i++)
+    {
+      fprintf(stdout, "%f ", instance->A[i]);
+    }
+  */
+
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
     if(j > 0)
@@ -77,26 +96,14 @@ int main(int argc, char **argv)
     ISTAsolve_lite(instance, MAX_ITER, MIN_FUNCDIFF);
     cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 
 		1.0, instance->A, instance->rdA, instance->xcurrent, 1, 0.0, result, 1);
-
-    //print results
-    /*    fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
-    for(i=0; i < rdA; i++)
-      {
-	fprintf(stdout, "%f ", instance->xcurrent[i]);
-	}
-    fprintf(stdout, "\n and here's the optimized A*x:\n");
-    for(i=0; i < ldA; i++)
-      {
-	fprintf(stdout, "%f ", result[i]);
-	}*/
     fprintf(stdout, "\n");
   }
 
+  //CONVERT BACK TO UNSCALED FORM
+  ISTAundoRescale(instance);
+
   //WRITE RESULTS TO FILE:
   writeResults(instance, outfilename, Matrixfilename, bfilename, lambdas[numLambdas-1]);
-
-  
-
 
   //FREE MEMORY
   ISTAinstance_free(instance); free(result); free(lambdas);
@@ -187,7 +194,7 @@ static void writeResults(ISTAinstance* instance, char* outfilename,
   if(outFILE!=NULL) {
     fprintf(outFILE, "Results for %s regression using %s algorithm. \n", regForm, accelForm);
     fprintf(outFILE, "Using data from:\nMatrix File %s \nVector File %s \n", Matrixfilename, bfilename);
-    fprintf(outFILE, "and final regularization weight %f \n\nFINAL X VECTOR:\n", finalLambda);
+    fprintf(outFILE, "and final regularization weight %f \n\nINTERCEPT: %f\n\nFINAL X VECTOR:\n", finalLambda, instance->intercept);
     for(i=0; i < instance->rdA; i++) {
       fprintf(outFILE, "%f \n", instance->xcurrent[i]);
     }

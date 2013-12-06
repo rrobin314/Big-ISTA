@@ -9,6 +9,11 @@ typedef struct ISTAinstance {
   int acceleration; //0 if normal ISTA update; 1 for FISTA acceleration
   char regressionType; // 'l' for linear regression and 'o' for logistic regression
 
+  // SCALING VALUES
+  float* meanShifts;
+  float* scalingFactors;
+  float intercept;
+
   // VALUES DURING CALCULATION
   float* stepsize;
   float* xcurrent;
@@ -29,6 +34,16 @@ extern ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, floa
 // "Deconstructor" for ISTAinstance
 // Applies free to all pointers contained in instance, then applies free to instance itself.
 extern void ISTAinstance_free(ISTAinstance* instance);
+
+// Rescales the columns of A to have zero mean and unit norm.
+// Stores the shifts and rescaling factors in the variables
+// "meanShifts" and "scalingFactors" respectively.
+extern void ISTArescale(ISTAinstance* instance);
+
+// Converts the scaled problem back into its original,
+// unscaled form.  This automatically implies the use of 
+// an intercept, whose value is stored in "intercept"
+extern void ISTAundoRescale(ISTAinstance* instance);
 
 // Applies ISTA to min( ISTAregress_func(xvalue) + lambda*regFunc(xvalue) )
 //    where ISTAregress_func is ||Ax-b||^2 for linear regression and the logistic function for logistic regression

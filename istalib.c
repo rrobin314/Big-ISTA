@@ -20,9 +20,15 @@ ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambd
   instance->gamma = gamma;
   instance->acceleration = acceleration;
   instance->regressionType = regressionType;
+  instance->intercept = 0.0;
   instance->xcurrent = xvalue;
 
-  //Allocate memory for values used during the calculation
+  //ALLOCATE MEMORY
+  instance->meanShifts = malloc(rdA*sizeof(float));
+  instance->scalingFactors = malloc(rdA*sizeof(float));
+  if ( instance->meanShifts==NULL || instance->scalingFactors==NULL )
+    printf("Unable to allocate memory\n");
+
   instance->stepsize = malloc(sizeof(float));
   *(instance->stepsize) = step;
 
@@ -56,12 +62,63 @@ void ISTAinstance_free(ISTAinstance* instance)
   free(instance->xprevious);
   free(instance->xcurrent);
   free(instance->stepsize); 
+  free(instance->scalingFactors);
+  free(instance->meanShifts);
   free(instance-> b);
   free(instance-> A);
   free(instance);
 }
 
+extern void ISTArescale(ISTAinstance* instance)
+{
+  int i, j;
+  float mean, norm;
 
+  // LOOP THROUGH THE COLUMNS OF A
+  for(j=0; j<(instance->rdA); j++) {
+
+    //CALCULATE MEAN OF THE COLUMN 
+    mean = 0;
+    for(i=0; i<(instance->ldA); i++) {
+      mean += instance->A[i*(instance->rdA) + j];
+    }
+    mean = mean / (instance->ldA);
+
+    //SUBTRACT MEAN FROM THE COLUMN
+    for(i=0; i<(instance->ldA); i++) {
+      instance->A[i*(instance->rdA) + j] -= mean;
+    }
+
+    //STORE MEAN
+    instance->meanShifts[j] = mean;
+
+    //CALCULATE 2-NORM OF COLUMN
+    norm = cblas_snrm2(instance->ldA, instance->A + j, instance->rdA);
+
+    //SCALE COLUMN TO HAVE UNIT NORM
+    if(norm > 0.0)
+      cblas_sscal(instance->ldA, 1.0 / norm, instance->A + j, instance->rdA);
+
+    //STORE NORM
+    instance->scalingFactors[j] = norm;
+
+  }
+}
+
+extern void ISTAundoRescale(ISTAinstance* instance)
+{
+  int i;
+
+  //TRANSFER SCALING FACTORS ONTO THE X VALUES
+  for(i=0; i<(instance->rdA); i++) {
+    if(instance->scalingFactors[i] > 0.0)
+      instance->xcurrent[i] = instance->xcurrent[i] / instance->scalingFactors[i];
+  }
+
+  //CALCULATE INTERCEPT SO THAT "intercept" + "unscaled A" * xcurrent = b
+  instance->intercept = -1.0 * cblas_sdot(instance->rdA, instance->xcurrent, 1, instance->meanShifts, 1);
+
+}
 
 void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
 	       int acceleration, char regressionType, float* xvalue, 
