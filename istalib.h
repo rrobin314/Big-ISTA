@@ -48,36 +48,12 @@ extern void ISTAundoRescale(ISTAinstance* instance);
 
 extern void ISTAaddIntercept(ISTAinstance* instance);
 
-// Applies ISTA to min( ISTAregress_func(xvalue) + lambda*regFunc(xvalue) )
-//    where ISTAregress_func is ||Ax-b||^2 for linear regression and the logistic function for logistic regression
-//    and regFunc is the L1 norm
-// The result is recorded by updating the xvalue pointer.
-// The function allocates and deallocates memory for xprevious, searchPoint, gradvalue, and eta
-// and, hence, may not be efficient for situations where many calls to this function are necessary
-extern void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
-		      int acceleration, char regressionType, float* xvalue, 
-		      int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF);
 
 // This version of ISTAsolve does not allocate any memory
 // and is meant to be used with ISTAinstance_new and ISTAinstance_free to handle
 // memory allocation.
 extern void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_FUNCDIFF );
 
-// Applies ISTAsolve_lite to instance for a series of lambdas.
-// All solutions are returned in the double pointer.
-// Memory for this is allocated in the function, but not deallocated - CAREFUL to deallocate memory
-extern float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
-				  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
-
-// Cross validation routine.
-// folds is an integer array of length ldA with values from 0 to num_folds - 1
-// that determines which rows are in which fold.
-// Then for each fold, the code runs ISTA on the rows NOT in that fold and 
-// gets a solution "x".  Then it calculates the average value of the regression function at "x"
-// for the rows in the fold.  This is the error for that fold.
-// The final error is the average of the fold errors.
-extern float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds, 
-			  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
 
 // Backtracking routine to determine how big of a gradient step to take during ISTA.
 // Does the following updates:
@@ -87,20 +63,13 @@ extern float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds,
 // If additional loops are necessary, updates stepsize to gamma*stepsize 
 extern void ISTAbacktrack(ISTAinstance* instance);
 
-// Version of backtracking for cross validation
-extern void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds);
 
 // Calculates gradient of ISTAregress_func at searchPoint and stores it in gradvalue
 extern void ISTAgrad(ISTAinstance* instance);
 
-// Version of gradient method for cross validation
-extern void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds);
 
 // Calculates the appropriate regression function for either linear or logistic regression
 extern float ISTAregress_func(float* xvalue, ISTAinstance* instance);
-
-// Calculates the regression function value using only the rows corresponding to currentFold in folds
-extern float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold);
 
 extern void soft_threshold(float* xvalue, int xlength, float threshold);
 
