@@ -8,7 +8,7 @@
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, char* Matrixfilename, 
 			    char* outfilename, int* ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
-			    float* gamma, float* step, char* regType, int* accel, 
+			    float* gamma, float* step, char* regType, int* interceptFlag, int* accel, 
 			    int* MAX_ITER, float* MIN_FUNCDIFF);
 
 static void getMatrix(float* A, int ldA, int rdA, char* Afilename);
@@ -21,7 +21,7 @@ static void writeResults(ISTAinstance* instance, char* outfilename,
 int main(int argc, char **argv)
 {
   //srand(time(NULL));
-  int i, j, ldA, rdA, accel, MAX_ITER, numLambdas;
+  int i, j, ldA, rdA, interceptFlag, accel, MAX_ITER, numLambdas;
   float lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
   char regType;
   char* xfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
@@ -32,14 +32,14 @@ int main(int argc, char **argv)
   //GET PARAMETERS FROM TXT FILE
   getMasterParams(argv[1], xfilename, bfilename, Matrixfilename, outfilename, &ldA, &rdA,
 		  &numLambdas, &lambdaStart, &lambdaFinish,
-		  &gamma, &step, &regType, &accel,
+		  &gamma, &step, &regType, &interceptFlag, &accel,
 		  &MAX_ITER, &MIN_FUNCDIFF);
 
 
   //ALLOCATE MEMORY
-  float *A = malloc(ldA*rdA*sizeof(float));
+  float *A = malloc(ldA*(rdA+1)*sizeof(float));
   float *b = malloc(ldA*sizeof(float));
-  float *x0 = calloc(rdA, sizeof(float)); //Currently, we always intialize x0 to zero
+  float *x0 = calloc(rdA+1, sizeof(float)); //Currently, we always intialize x0 to zero
   float *lambdas = malloc(numLambdas*sizeof(float));
   float *result = malloc((ldA+rdA)*sizeof(float));
   if(A==NULL || b==NULL || x0==NULL || result==NULL || lambdas==NULL)
@@ -62,40 +62,27 @@ int main(int argc, char **argv)
       fprintf(stdout, "%f ", b[i]);
       }*/
 
-  //CALCULATE LAMBDA PATH
-  calcLambdas(lambdas, numLambdas, lambdaStart, lambdaFinish, A, ldA, rdA, b, result);
 
   //Initialize ISTAinstance
-  ISTAinstance* instance = ISTAinstance_new(A, ldA, rdA, b, lambdas[0], 
-					    gamma, accel, regType, x0, step);
+  ISTAinstance* instance = ISTAinstance_new(A, ldA, rdA, b, lambdaFinish, 
+					    gamma, accel, interceptFlag, regType, x0, step);
 
   //CENTER AND NORMALIZE COLUMNS OF A
   ISTArescale(instance);
-  /*fprintf(stdout, "Here's scaleFactors:\n");
-  for(i=0; i < rdA; i++)
-    {
-      fprintf(stdout, "%f ", instance->scalingFactors[i]);
-    }
-  fprintf(stdout, "\nHere's meanShifts:\n");
-  for(i=0; i < rdA; i++)
-    {
-      fprintf(stdout, "%f ", instance->meanShifts[i]);
-    }
-  fprintf(stdout, "\nHere's the first row of A:\n");
-  for(i=0; i < rdA; i++)
-    {
-      fprintf(stdout, "%f ", instance->A[i]);
-    }
-  */
 
+  //CALCULATE LAMBDA PATH
+  calcLambdas(lambdas, numLambdas, lambdaStart, lambdaFinish, A, ldA, rdA, b, result);
+
+  //IF WE WANT AN INTERCEPT, CHANGE LAST COLUMN OF A TO ALL_ONES
+  ISTAaddIntercept(instance);
+  
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
-    if(j > 0)
-      instance->lambda = lambdas[j];
+    instance->lambda = lambdas[j];
 
     ISTAsolve_lite(instance, MAX_ITER, MIN_FUNCDIFF);
-    cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA, 
-		1.0, instance->A, instance->rdA, instance->xcurrent, 1, 0.0, result, 1);
+    cblas_sgemv(CblasRowMajor, CblasNoTrans, instance->ldA, instance->rdA + 1, 
+		1.0, instance->A, instance->rdA + 1, instance->xcurrent, 1, 0.0, result, 1);
     fprintf(stdout, "\n");
   }
 
@@ -116,7 +103,7 @@ int main(int argc, char **argv)
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, char* Matrixfilename,
 			    char* outfilename, int* ldA, int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
-			    float* gamma, float* step, char* regType, int* accel, 
+			    float* gamma, float* step, char* regType, int* interceptFlag, int* accel, 
 			    int* MAX_ITER, float* MIN_FUNCDIFF) {
   FILE *paramFile;
   paramFile = fopen(parameterFile, "r");
@@ -131,11 +118,12 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
   fscanf(paramFile, " numRows : %d", ldA);
   fscanf(paramFile, " numCols : %d", rdA);
   fscanf(paramFile, " numLambdas : %d %*128[^\n]", numLambdas);
-  fscanf(paramFile, " lambdaStart : %16f", lambdaStart);
+  fscanf(paramFile, " lambdaStart : %16f %*128[^\n]", lambdaStart);
   fscanf(paramFile, " lambdaFinish : %16f", lambdaFinish);
   fscanf(paramFile, " StepSizeDecretion : %16f", gamma);
   fscanf(paramFile, " InitialStep : %16f", step);
-  fscanf(paramFile, " RegressionType : %4s", regType);
+  fscanf(paramFile, " RegressionType : %4s %*128[^\n]", regType);
+  fscanf(paramFile, " IncludeIntercept : %d", interceptFlag);
   fscanf(paramFile, " FistaAcceleration : %d", accel);
   fscanf(paramFile, " MaximumIterations : %d", MAX_ITER);
   fscanf(paramFile, " MinimumFuncDelta : %16f", MIN_FUNCDIFF);
@@ -150,11 +138,17 @@ static void getMatrix(float* A, int ldA, int rdA, char* Afilename) {
   if(paramFile == NULL)
     fprintf(stderr, "MatrixFile Open Failed!\n");
 
-  int i;
+  int i,j;
   float value;
-  for(i=0; i<rdA*ldA; i++) {
-    fscanf(paramFile, " %32f , ", &value);
-    A[i] = value;
+
+  for(i=0; i<ldA; i++) {
+    for(j=0; j<rdA; j++) {
+      fscanf(paramFile, " %32f , ", &value);
+      A[i*(rdA+1) + j] = value;
+    }
+    //MAKE A FINAL COLUMN OF ZEROS TO ALLOW FOR INTERCEPT COLUMN.
+    //SO A IS OF DIMENSION ldA x rdA+1
+    A[i*(rdA+1) + rdA] = 0;
   }
 
   fclose(paramFile);
@@ -194,7 +188,7 @@ static void writeResults(ISTAinstance* instance, char* outfilename,
   if(outFILE!=NULL) {
     fprintf(outFILE, "Results for %s regression using %s algorithm. \n", regForm, accelForm);
     fprintf(outFILE, "Using data from:\nMatrix File %s \nVector File %s \n", Matrixfilename, bfilename);
-    fprintf(outFILE, "and final regularization weight %f \n\nINTERCEPT: %f\n\nFINAL X VECTOR:\n", finalLambda, instance->intercept);
+    fprintf(outFILE, "and final regularization weight %f \n\nINTERCEPT: %f\n\nFINAL X VECTOR:\n", finalLambda, instance->intercept + instance->xcurrent[(instance->rdA)]);
     for(i=0; i < instance->rdA; i++) {
       fprintf(outFILE, "%f \n", instance->xcurrent[i]);
     }

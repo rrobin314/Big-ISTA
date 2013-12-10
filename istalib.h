@@ -7,6 +7,7 @@ typedef struct ISTAinstance {
   float lambda; //how much weight we give to the 1-norm
   float gamma; //fraction we decrease stepsize each time it fails
   int acceleration; //0 if normal ISTA update; 1 for FISTA acceleration
+  int interceptFlag; //1 to add a column of ones to A to calculate an intercept
   char regressionType; // 'l' for linear regression and 'o' for logistic regression
 
   // SCALING VALUES
@@ -29,7 +30,7 @@ typedef struct ISTAinstance {
 // elements in the ISTAinstance object.  Also, allocates appropriate memory for stepsize, xprevious,
 // searchPoint, gradvalue, and eta.  Finally, sets searchPoint equal to xvalue.
 extern ISTAinstance* ISTAinstance_new(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
-				      int acceleration, char regressionType, float* xvalue, float step );
+				      int acceleration, int interceptFlag, char regressionType, float* xvalue, float step );
 
 // "Deconstructor" for ISTAinstance
 // Applies free to all pointers contained in instance, then applies free to instance itself.
@@ -44,6 +45,8 @@ extern void ISTArescale(ISTAinstance* instance);
 // unscaled form.  This automatically implies the use of 
 // an intercept, whose value is stored in "intercept"
 extern void ISTAundoRescale(ISTAinstance* instance);
+
+extern void ISTAaddIntercept(ISTAinstance* instance);
 
 // Applies ISTA to min( ISTAregress_func(xvalue) + lambda*regFunc(xvalue) )
 //    where ISTAregress_func is ||Ax-b||^2 for linear regression and the logistic function for logistic regression
