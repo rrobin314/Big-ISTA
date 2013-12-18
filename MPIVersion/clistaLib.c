@@ -77,93 +77,6 @@ void ISTAinstance_mpi_free(ISTAinstance_mpi* instance)
   free(instance);
 }
 
-/*
-
-void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
-	       int acceleration, char regressionType, float* xvalue, 
-	       int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF)
-{
-  //This method updates xvalue to reflect the solution to the optimization
-
-  //INITIALIZATION
-  ISTAinstance* instance = malloc(sizeof(ISTAinstance));
-  if ( instance==NULL )
-    fprintf(stdout, "Unable to allocate memory\n");
-
-  instance->A = A;
-  instance->ldA = ldA;
-  instance->rdA = rdA;
-  instance->b = b;
-  instance->lambda = lambda;
-  instance->gamma = gamma;
-  instance->acceleration = acceleration;
-  instance->regressionType = regressionType;
-  instance->xcurrent = xvalue;
-
-  //Allocate memory for values used during the calculation
-  instance->stepsize = malloc(sizeof(float));
-  *(instance->stepsize) = 1.0;
-
-  instance->xprevious = malloc(rdA*sizeof(float));
-  if ( instance->xprevious==NULL )
-    fprintf(stdout, "Unable to allocate memory\n");
-
-  instance->searchPoint = malloc(rdA*sizeof(float));
-  if ( instance->searchPoint==NULL )
-    fprintf(stdout, "Unable to allocate memory\n");
-  cblas_scopy(rdA, instance->xcurrent, 1, instance->searchPoint, 1);
-
-  instance->gradvalue = malloc(rdA*sizeof(float));
-  instance->eta = malloc((ldA+rdA)*sizeof(float));
-  if ( instance->gradvalue==NULL || instance->eta==NULL )
-    fprintf(stdout, "Unable to allocate memory\n");
-
-  //Initialize stop values:
-  int iter=0;
-  float xdiff=1;
-  float funcdiff=1;
-
-  while(iter < MAX_ITER && xdiff > MIN_XDIFF && funcdiff > MIN_FUNCDIFF)
-    {
-      cblas_scopy(rdA, instance->xcurrent, 1, instance->xprevious, 1); //set xprevious to xcurrent
-
-      //RUN BACKTRACKING ROUTINE
-       ISTAbacktrack( instance );
-
-      //UPDATE TERMINATING VALUES
-      cblas_saxpy(rdA, -1.0, instance->xcurrent, 1, instance->xprevious, 1); //xprevious now holds "xprevious - xcurrent"
-      xdiff = cblas_snrm2(rdA, instance->xprevious, 1);
-
-      funcdiff = ISTAloss_func_mpi(instance->searchPoint, instance) - ISTAloss_func_mpi(instance->xcurrent, instance);
-      funcdiff += instance->lambda * cblas_sasum(rdA, instance->searchPoint, 1);
-      funcdiff -= instance->lambda * cblas_sasum(rdA, instance->xcurrent, 1);
-
-      //UPDATE SEARCHPOINT
-      if( instance->acceleration ) //FISTA searchpoint
-	{
-	  cblas_sscal(rdA, - iter / (float)(iter + 2), instance->xprevious, 1);
-	  cblas_saxpy(rdA, 1.0, instance->xcurrent, 1, instance->xprevious, 1); //now xprevious equals what we want
-	  cblas_scopy(rdA, instance->xprevious, 1, instance->searchPoint, 1);
-	}
-      else //regular ISTA searchpoint
-	{
-	  cblas_scopy(rdA, instance->xcurrent, 1, instance->searchPoint, 1);
-	}
-
-      //UPDATE ITERATOR
-      iter++;
-    }
-  
-  fprintf(stdout, "iter: %d xdiff: %f funcdiff: %f\n", iter, xdiff, funcdiff);
-  fprintf(stdout, "final regression function value: %f\n", ISTAloss_func_mpi(instance->xcurrent, instance) );
-
-  //FREE MEMORY
-  free(instance->eta); free(instance->gradvalue); free(instance->searchPoint); free(instance->xprevious);
-  free(instance->stepsize); free(instance);
-									       
-}
-
-*/
 
 void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDIFF )
 {
@@ -259,30 +172,23 @@ extern void ISTAgrad(ISTAinstance_mpi* instance)
   switch ( instance->regressionType )
     {
     case 'l': // Here we calculate the gradient: 2*A'*(A*searchPoint - b)  
-      multiply_Ax(instance->searchPoint, instance->rdA+1, instance->slave_ldA, instance->eta, 
-		  instance->nslaves, instance->comm, instance->tag_ax);
-
+      multiply_Ax(instance->searchPoint, instance->eta, instance);
       cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*searchPoint - b
 
       //NOTE: WE ARE MISSING THE SCALAR 2 IN THIS CALCULATION, DOES THIS MATTER?
       //ANSWER: Yes, it matters a lot! Added an addition sscal call to fix.
-      multiply_ATx(instance->eta, instance->ldA, instance->slave_ldA, instance->rdA,
-		   instance->gradvalue, instance->nslaves, instance->comm, instance->tag_atx);
+      multiply_ATx(instance->eta, instance->gradvalue, instance);
       cblas_sscal(instance->rdA + 1, 2.0, instance->gradvalue, 1);
       break;
       
     case 'o': // Here we calculate the gradient:A'*(p(A*searchPoint) - b) where p is the logistic function 
-
-      multiply_Ax(instance->searchPoint, instance->rdA+1, instance->slave_ldA, instance->eta, 
-		  instance->nslaves, instance->comm, instance->tag_ax);
-
+      multiply_Ax(instance->searchPoint, instance->eta, instance);
       for(i=0; i < instance->ldA; i++)
 	{
 	  instance->eta[i] = 1 / (1 + exp( -(instance->eta[i]) ) ) - instance->b[i];
 	}
 
-      multiply_ATx(instance->eta, instance->ldA, instance->slave_ldA, instance->rdA,
-		   instance->gradvalue, instance->nslaves, instance->comm, instance->tag_atx);
+      multiply_ATx(instance->eta, instance->gradvalue, instance);
 
       break;
       
@@ -304,16 +210,14 @@ float ISTAloss_func_mpi(float* xvalue, ISTAinstance_mpi* instance)
   switch (instance->regressionType) 
     {
     case 'l': //In this case, the regression function is ||A*xvalue - b||^2 
-      multiply_Ax(xvalue, instance->rdA+1, instance->slave_ldA, instance->eta, 
-		  instance->nslaves, instance->comm, instance->tag_ax);
+      multiply_Ax(xvalue, instance->eta, instance);
       cblas_saxpy(instance->ldA, -1.0, instance->b, 1, instance->eta, 1); //eta now holds A*xvalue - b
 
       value = pow( cblas_snrm2(instance->ldA, instance->eta, 1 ), 2);
       break;
 
     case 'o': // Regression function: sum log(1+ e^(A_i * x)) - A_i * x * b_i 
-      multiply_Ax(xvalue, instance->rdA+1, instance->slave_ldA, instance->eta, 
-		  instance->nslaves, instance->comm, instance->tag_ax);
+      multiply_Ax(xvalue, instance->eta, instance);
       for(i=0; i < instance->ldA; i++)
       	{
 	  value += log( 1 + exp( instance->eta[i] )) - instance->eta[i] * instance->b[i];
@@ -349,20 +253,19 @@ void soft_threshold(float* xvalue, int xlength, float threshold)
 }
 
 extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart, 
-			float lambdaFinish, ISTAinstance_mpi* instance, float* result)
+			float lambdaFinish, ISTAinstance_mpi* instance)
 {
   float startValue;
   int j;
 
   //IF lambdaStart is negative, then do automatic calculation of startValue
   if(lambdaStart <= 0) {
-    //result = A' * b
-    multiply_ATx(instance->b, instance->ldA, instance->slave_ldA, instance->rdA,
-		 result, instance->nslaves, instance->comm, instance->tag_atx);
-    //i = index of max in absolute value of result
-    //With lambda = result[i], 0 will be an optimal solution of our optimization
-    CBLAS_INDEX i = cblas_isamax(instance->rdA + 1, result, 1);
-    startValue = fabs(result[i]) / 2.0;
+    //eta = A' * b
+    multiply_ATx(instance->b, instance->eta, instance);
+    //i = index of max in absolute value of eta
+    //With lambda = eta[i], 0 will be an optimal solution of our optimization
+    CBLAS_INDEX i = cblas_isamax(instance->rdA + 1, instance->eta, 1);
+    startValue = fabs(instance->eta[i]) / 2.0;
   }
   else if(lambdaStart > 0) {
     startValue = lambdaStart;
@@ -380,62 +283,68 @@ extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart,
   }
 }
 
-//NOTE: length of x must be rdA+1
-extern void multiply_Ax(float* xvalue, int lenx, int slave_ldA, float* result, int nslaves, MPI_Comm comm, int TAG)
+//NOTE: length of x must be rdA+1, result is of length ldA
+extern void multiply_Ax(float* xvalue, float* result, ISTAinstance_mpi* instance)
 {
   int rank;
-  float* temp;
-  int* counts = calloc(nslaves+1, sizeof(int));
-  int* displacements = calloc(nslaves + 1, sizeof(int));
+  float* dummyFloat;
+  int* counts = calloc(instance->nslaves + 1, sizeof(int));
+  int* displacements = calloc(instance->nslaves + 1, sizeof(int));
   if(counts==NULL || displacements==NULL)
     fprintf(stdout,"Unable to allocate memory!");
-  for(rank=1; rank <= nslaves; rank++)
+  for(rank=1; rank <= instance->nslaves; rank++)
     {
-      counts[rank] = slave_ldA;
-      displacements[rank] = slave_ldA*(rank-1);
+      counts[rank] = instance->slave_ldA;
+      displacements[rank] = instance->slave_ldA*(rank-1);
     }
 
-
-  for(rank=1; rank <= nslaves; rank++)
+  //TELL SLAVES WE ARE GOING TO MULTIPLY A*xvalue
+  for(rank=1; rank <= instance->nslaves; rank++)
     {
-      MPI_Send(0, 0, MPI_INT, rank, TAG, comm);
+      MPI_Send(0, 0, MPI_INT, rank, instance->tag_ax, instance->comm);
     }
 
-  MPI_Bcast(xvalue, lenx, MPI_FLOAT, 0, comm);
+  //SEND xvalue TO THE SLAVES
+  MPI_Bcast(xvalue, instance->rdA + 1, MPI_FLOAT, 0, instance->comm);
 
-  MPI_Gatherv(temp, 0, MPI_FLOAT, result, counts, displacements, MPI_FLOAT, 0, comm);
+  //SLAVES MULTIPLY.....
+
+  //ASSEMBLES SEGMENTS OF RESULT FROM SLAVES INTO FINAL RESULT
+  MPI_Gatherv(dummyFloat, 0, MPI_FLOAT, result, counts, displacements, MPI_FLOAT, 0, instance->comm);
 
   free(counts); free(displacements);
 
   return;
 }
 
-//NOTE: result is of length rdA+1
-extern void multiply_ATx(float* xvalue, int lenx, int slave_ldA, int rdA, float* result, int nslaves, MPI_Comm comm, int TAG)
+//NOTE: xvalue must be of length ldA, result is of length rdA+1
+extern void multiply_ATx(float* xvalue, float* result, ISTAinstance_mpi* instance)
 {
   int rank;
-  float* temp = calloc(rdA+1, sizeof(float));
-  int* counts = calloc(nslaves+1, sizeof(int));
-  int* displacements = calloc(nslaves + 1, sizeof(int));
+  float* temp = calloc(instance->rdA+1, sizeof(float));
+  int* counts = calloc(instance->nslaves + 1, sizeof(int));
+  int* displacements = calloc(instance->nslaves + 1, sizeof(int));
   if(counts==NULL || displacements==NULL)
     fprintf(stdout,"Unable to allocate memory!");
-  for(rank=1; rank <= nslaves; rank++)
+  for(rank=1; rank <= instance->nslaves; rank++)
     {
-      counts[rank] = slave_ldA;
-      displacements[rank] = slave_ldA*(rank-1);
+      counts[rank] = instance->slave_ldA;
+      displacements[rank] = instance->slave_ldA*(rank-1);
     }
 
-
-  for(rank=1; rank <= nslaves; rank++)
+  //Tell slaves we are going to multiply A' * xvalue
+  for(rank=1; rank <= instance->nslaves; rank++)
     {
-      MPI_Send(0, 0, MPI_INT, rank, TAG, comm);
+      MPI_Send(0, 0, MPI_INT, rank, instance->tag_atx, instance->comm);
     }
 
   //Split xvalue into subvectors and distribute among the slaves
-  MPI_Scatterv(xvalue, counts, displacements, MPI_FLOAT, temp, 0, MPI_FLOAT, 0, comm);
+  MPI_Scatterv(xvalue, counts, displacements, MPI_FLOAT, temp, 0, MPI_FLOAT, 0, instance->comm);
+
+  //Slaves multiply....
 
   //Sum up the results of each slave multiplication
-  MPI_Reduce(temp, result, rdA+1, MPI_FLOAT, MPI_SUM, 0, comm);
+  MPI_Reduce(temp, result, instance->rdA + 1, MPI_FLOAT, MPI_SUM, 0, instance->comm);
 
   free(temp); free(counts); free(displacements);
 
@@ -443,23 +352,27 @@ extern void multiply_ATx(float* xvalue, int lenx, int slave_ldA, int rdA, float*
 }
 
 //NOTE: xvalue and result are of length rdA+1  
-extern void multiply_ATAx(float* xvalue, int lenx, float* result, int nslaves, MPI_Comm comm, int TAG)
+extern void multiply_ATAx(float* xvalue, float* result, ISTAinstance_mpi* instance)
 {
   int rank;
-  float* temp = calloc(lenx, sizeof(float));
+  float* temp = calloc(instance->rdA + 1, sizeof(float));
   if(temp==NULL)
     fprintf(stdout,"Unable to allocate memory!");
 
 
   //Tell slaves we are going to do A^t*A*xvalue
-  for(rank=1; rank <= nslaves; rank++)
+  for(rank=1; rank <= instance->nslaves; rank++)
     {
-      MPI_Send(0, 0, MPI_INT, rank, TAG, comm);
+      MPI_Send(0, 0, MPI_INT, rank, instance->tag_atax, instance->comm);
     }
 
-  MPI_Bcast(xvalue, lenx, MPI_FLOAT, 0, comm);
+  //Send xvalue to the slaves
+  MPI_Bcast(xvalue, instance->rdA + 1, MPI_FLOAT, 0, instance->comm);
 
-  MPI_Reduce(temp, result, lenx, MPI_FLOAT, MPI_SUM, 0, comm);
+  //Slaves multiply...
+
+  //Sum up the results of each slave multiplication
+  MPI_Reduce(temp, result, instance->rdA + 1, MPI_FLOAT, MPI_SUM, 0, instance->comm);
 
   free(temp);
 

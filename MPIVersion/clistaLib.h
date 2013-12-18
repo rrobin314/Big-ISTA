@@ -35,9 +35,11 @@ typedef struct ISTAinstance_mpi {
 } ISTAinstance_mpi;
 
 // "Constructor" for ISTAinstance
-// Returns a pointer to an ISTAinstance object with the arguments to the functions set as the corresponding
-// elements in the ISTAinstance object.  Also, allocates appropriate memory for stepsize, xprevious,
-// searchPoint, gradvalue, and eta.  Finally, sets searchPoint equal to xvalue.
+// Returns a pointer to an ISTAinstance object with the arguments to the function set as 
+// the corresponding elements in the ISTAinstance object.
+// Allocates appropriate memory for:
+// stepsize, xprevious, searchPoint, gradvalue, eta, meanShifts, and scalingFactors.
+// Finally, sets searchPoint equal to xvalue.
 extern 
 ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float lambda, 
 				       float gamma, int acceleration, char regressionType, 
@@ -50,12 +52,10 @@ ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float l
 extern void ISTAinstance_mpi_free(ISTAinstance_mpi* instance);
 
 
-
-// This version of ISTAsolve does not allocate any memory
-// and is meant to be used with ISTAinstance_new and ISTAinstance_free to handle
-// memory allocation.
+// Runs the ISTA algorithm with the parameters stored in the ISTAinstance_mpi* argument.
+// Algorithm terminates when the number of iterations exceeds MAX_ITER
+// or when the percent change of the objective function is lower than MIN_FUNCDIFF
 extern void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDIFF );
-
 
 // Backtracking routine to determine how big of a gradient step to take during ISTA.
 // Does the following updates:
@@ -65,21 +65,17 @@ extern void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_F
 // If additional loops are necessary, updates stepsize to gamma*stepsize 
 extern void ISTAbacktrack(ISTAinstance_mpi* instance);
 
-
-
-// Calculates gradient of ISTAregress_func at searchPoint and stores it in gradvalue
+// Calculates gradient of ISTAloss_func_mpi at searchPoint and stores it in gradvalue
 extern void ISTAgrad(ISTAinstance_mpi* instance);
-
 
 // Calculates the appropriate loss function for either linear or logistic regression
 extern float ISTAloss_func_mpi(float* xvalue, ISTAinstance_mpi* instance);
-
 
 //Implements soft thresholding operation
 extern void soft_threshold(float* xvalue, int xlength, float threshold);
 
 // Calculates a path of lambdas to solve on:
-// If lambdaStart > 0, then our starting path is just lambdaStart
+// If lambdaStart > 0, then our starting point is just lambdaStart
 // If lambdaStart < 0, then we calculate our starting point to be:
 //     0.5 * || A' * b ||_infinity
 // 
@@ -87,19 +83,22 @@ extern void soft_threshold(float* xvalue, int xlength, float threshold);
 // If numLambdas > 1, then we draw an exponential curve between
 // the starting point and lambdaFinish
 extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart, 
-			float lambdaFinish, ISTAinstance_mpi* instance, float* result);
+			float lambdaFinish, ISTAinstance_mpi* instance);
 
-//Routine that uses MPI to calculate the matrix-vector product A*xvalue and stores it in result
-//Note: ldA refers to the slave_ldA, i.e. the left dimension of the small A stored in a slave node
-//      lenx is the length of xvalue
-extern void multiply_Ax(float* xvalue, int lenx, int slave_ldA, float* result, int nslaves, MPI_Comm comm, int TAG);
+//Routine that uses MPI to calculate the matrix-vector product A*xvalue and stores it in result.
+//The length of xvalue must be rdA+1.
+//The returned length of result is ldA.
+extern void multiply_Ax(float* xvalue, float* result, ISTAinstance_mpi* instance);
 
 //Same as multiply_Ax, but with A'
-extern void multiply_ATx(float* xvalue, int lenx, int slave_ldA, int rdA, float* result, int nslaves, MPI_Comm comm, int TAG);
+//The length of xvalue must be ldA.
+//The returned length of result is rdA+1.
+extern void multiply_ATx(float* xvalue, float* result, ISTAinstance_mpi* instance);
 
 //Routine that uses MPI to calculate the matrix-vector produce A'*A*xvalue and stores it in result
-//Notes: lenx is the length of xvalue
-extern void multiply_ATAx(float* xvalue, int lenx, float* result, int nslaves, MPI_Comm comm, int TAG);
+//The length of xvalue must be rdA+1.
+//The returned length of result is rdA+1.
+extern void multiply_ATAx(float* xvalue, float* result, ISTAinstance_mpi* instance);
 
 //This method gets an ldA x rdA matrix from the csv file "filename"
 //and stores an ldA x rdA+1 matrix in A that corresponds to the matrix from the 

@@ -121,7 +121,7 @@ static void master(int nslaves, char* parameterFile)
   MPI_Bcast(instance->scalingFactors, rdA, MPI_FLOAT, 0, MPI_COMM_WORLD); 
 
   //CREATE LAMBDA PATH
-  calcLambdas(lambdas, numLambdas, lambdaStart, lambdaFinish, instance, result);
+  calcLambdas(lambdas, numLambdas, lambdaStart, lambdaFinish, instance);
 
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
@@ -130,19 +130,6 @@ static void master(int nslaves, char* parameterFile)
     ISTAsolve_lite(instance, MAX_ITER, MIN_FUNCDIFF);
     //multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
     //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
-
-
-    //print results
-    /*fprintf(stdout, "Here's the optimized x for lambda %f:\n", instance->lambda);
-        for(i=0; i < rdA; i++)
-      {
-	fprintf(stdout, "%f ", xvalue[i]);
-	}
-    fprintf(stdout, "\n and here's the optimized A*x:\n");
-    for(i=0; i < total_ldA; i++)
-      {
-	fprintf(stdout, "%f ", result[i]);
-	}*/
     fprintf(stdout, "\n");
   }
 
