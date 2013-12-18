@@ -1,9 +1,10 @@
 FileNameForX0 : xinit.csv
-FileNameForB : yVector_100.csv
-numRowsForSlave : 50
-numCols : 1000
-numLambdas : 10 (lambda is the weight we put on the regularization function)
-lambdaStart : 50
+FileNameForB : Data/yVector_4.csv
+OutputFile : ISTAmpiOut.txt
+numRowsForSlave : 2
+numCols : 4
+numLambdas : 3 (lambda is the weight we put on the regularization function)
+lambdaStart : -2 (a negative value here forces automatic calculation)
 lambdaFinish : 0.1
 StepSizeDecretion : 0.9
 InitialStep : 1.0

@@ -8,7 +8,13 @@ typedef struct ISTAinstance_mpi {
   float lambda; //how much weight we give to the 1-norm
   float gamma; //fraction we decrease stepsize each time it fails
   int acceleration; //0 if normal ISTA update; 1 for FISTA acceleration
+  int interceptFlag; //1 to add a column of ones to A to calculate an intercept
   char regressionType; // 'l' for linear regression and 'o' for logistic regression
+
+  // SCALING VALUES
+  float* meanShifts;
+  float* scalingFactors;
+  float intercept;
 
   // MPI VALUES
   int nslaves;
@@ -44,45 +50,12 @@ ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float l
 extern void ISTAinstance_mpi_free(ISTAinstance_mpi* instance);
 
 
-/*
-
-
-// Applies ISTA to min( ISTAregress_func(xvalue) + lambda*regFunc(xvalue) )
-//    where ISTAregress_func is ||Ax-b||^2 for linear regression and the logistic function for logistic regression
-//    and regFunc is the L1 norm
-// The result is recorded by updating the xvalue pointer.
-// The function allocates and deallocates memory for xprevious, searchPoint, gradvalue, and eta
-// and, hence, may not be efficient for situations where many calls to this function are necessary
-extern void ISTAsolve(float* A, int ldA, int rdA, float* b, float lambda, float gamma, 
-		      int acceleration, char regressionType, float* xvalue, 
-		      int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF);
-
-*/
 
 // This version of ISTAsolve does not allocate any memory
 // and is meant to be used with ISTAinstance_new and ISTAinstance_free to handle
 // memory allocation.
 extern void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDIFF );
 
-/*
-
-// Applies ISTAsolve_lite to instance for a series of lambdas.
-// All solutions are returned in the double pointer.
-// Memory for this is allocated in the function, but not deallocated - CAREFUL to deallocate memory
-extern float** ISTAsolve_pathwise(float* lambdas, int num_lambdas, ISTAinstance* instance, 
-				  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
-
-// Cross validation routine.
-// folds is an integer array of length ldA with values from 0 to num_folds - 1
-// that determines which rows are in which fold.
-// Then for each fold, the code runs ISTA on the rows NOT in that fold and 
-// gets a solution "x".  Then it calculates the average value of the regression function at "x"
-// for the rows in the fold.  This is the error for that fold.
-// The final error is the average of the fold errors.
-extern float ISTAcrossval(ISTAinstance* instance, int* folds, int num_folds, 
-			  int MAX_ITER, float MIN_XDIFF, float MIN_FUNCDIFF );
-
-*/
 
 // Backtracking routine to determine how big of a gradient step to take during ISTA.
 // Does the following updates:
@@ -94,28 +67,27 @@ extern void ISTAbacktrack(ISTAinstance_mpi* instance);
 
 
 
-// Version of backtracking for cross validation
-//extern void ISTAbacktrack_cv(ISTAinstance* instance, int currentFold, int* folds);
-
-
-
 // Calculates gradient of ISTAregress_func at searchPoint and stores it in gradvalue
 extern void ISTAgrad(ISTAinstance_mpi* instance);
-
-// Version of gradient method for cross validation
-//extern void ISTAgrad_cv(ISTAinstance* instance, int currentFold, int* folds);
-
-
 
 
 // Calculates the appropriate loss function for either linear or logistic regression
 extern float ISTAloss_func_mpi(float* xvalue, ISTAinstance_mpi* instance);
 
-// Calculates the regression function value using only the rows corresponding to currentFold in folds
-//extern float ISTAregress_func_cv(float* xvalue, ISTAinstance* instance, int currentFold, int* folds, int insideFold);
 
 //Implements soft thresholding operation
 extern void soft_threshold(float* xvalue, int xlength, float threshold);
+
+// Calculates a path of lambdas to solve on:
+// If lambdaStart > 0, then our starting path is just lambdaStart
+// If lambdaStart < 0, then we calculate our starting point to be:
+//     0.5 * || A' * b ||_infinity
+// 
+// If numLambdas == 1, then our path just consists of lambdaFinish
+// If numLambdas > 1, then we draw an exponential curve between
+// the starting point and lambdaFinish
+extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart, 
+			float lambdaFinish, ISTAinstance_mpi* instance, float* result);
 
 //Routine that uses MPI to calculate the matrix-vector product A*xvalue and stores it in result
 //Note: ldA refers to the slave_ldA, i.e. the left dimension of the small A stored in a slave node
@@ -130,10 +102,15 @@ extern void multiply_ATx(float* xvalue, int lenx, int slave_ldA, int rdA, float*
 extern void multiply_ATAx(float* xvalue, int lenx, float* result, int nslaves, MPI_Comm comm, int TAG);
 
 //This method gets an ldA x rdA matrix from the csv file "filename"
+//and stores an ldA x rdA+1 matrix in A that corresponds to the matrix from the 
+//file plus a final column that is either all-zero or all-one, depending on 
+//"interceptFlag"
+//
 //It is assumed that "filename" contains a matrix without row or column labels
 //where floats are specified with fewer than 24 significant digits.
 //It is assumed that "filename" contains a matrix with exactly rdA columns
 //
 //A is located by skipping the first (myrank-1)*ldA rows in the file and
 //starting input of A from that point.
-extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank, char* filename);
+extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank, 
+			   char* filename, int interceptFlag);

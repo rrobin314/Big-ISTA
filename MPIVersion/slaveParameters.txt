@@ -1,3 +1,4 @@
-MatrixFileName : XMatrix_100_1000.csv
-numRows : 50
-numCols : 1000
+MatrixFileName : Data/XMatrix_4_4.csv
+numRows : 2
+numCols : 4
+interceptFlag : 1
