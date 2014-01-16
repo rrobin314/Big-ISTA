@@ -147,9 +147,10 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_FUNCDIFF )
 
   //Initialize stop values:
   int iter=0;
+  int i;
   float funcdiff=1;
 
-  printf("\nintial objective function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
+  printf("intial objective function value for lambda %f: %f\n", instance->lambda, ISTAregress_func(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 
   while(iter < MAX_ITER && funcdiff > MIN_FUNCDIFF)
     {
@@ -181,6 +182,19 @@ void ISTAsolve_lite(ISTAinstance* instance, int MAX_ITER, float MIN_FUNCDIFF )
 	{
 	  cblas_scopy(instance->rdA + 1, instance->xcurrent, 1, instance->searchPoint, 1);
 	}
+
+      //DEBUGGING
+      /*if(iter <= 1 && instance->lambda >= 16) {
+	fprintf(stdout, "\ngradient: ");
+	for(i=0; i<5; i++) {
+	  fprintf(stdout, "%f ", instance->gradvalue[i]);
+	}
+	fprintf(stdout, "\nsearchpoint: ");
+	for(i=0; i<5; i++) {
+	  fprintf(stdout, "%f ", instance->searchPoint[i]);
+	}
+	fprintf(stdout, "\n");
+	}*/
 
       //UPDATE ITERATOR
       iter++;
@@ -216,10 +230,17 @@ void ISTAbacktrack(ISTAinstance* instance)
 	         ISTAregress_func(instance->searchPoint, instance);
     cblas_scopy(instance->rdA + 1, instance->xcurrent, 1, instance->eta, 1);
     cblas_saxpy(instance->rdA + 1, -1.0, instance->searchPoint, 1, instance->eta, 1); //eta now holds "xcurrent - searchpoint"
+
+    //DEBUGGING
+    //fprintf(stdout, "eta[0] %f predifference %f \n", instance->eta[0], difference);
+
     difference -= cblas_sdot(instance->rdA + 1, instance->eta, 1, instance->gradvalue, 1);
     difference -= cblas_sdot(instance->rdA + 1, instance->eta, 1, instance->eta, 1) / (2 * (*(instance->stepsize)) );
 
     numTrials++;
+
+    //DEBUGGING
+    //fprintf(stdout, "xcurrent[0] %f difference %f \n", instance->xcurrent[0], difference);
 
   } while(numTrials < 100 && difference > 0);
   

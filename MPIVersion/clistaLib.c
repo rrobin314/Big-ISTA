@@ -45,7 +45,7 @@ ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float l
     fprintf(stdout, "Unable to allocate memory\n");
   cblas_scopy(rdA+1, instance->xcurrent, 1, instance->searchPoint, 1);
 
-  instance->gradvalue = malloc(rdA+1*sizeof(float));
+  instance->gradvalue = malloc((rdA+1)*sizeof(float));
   instance->eta = malloc((instance->ldA + rdA)*sizeof(float));
   if ( instance->gradvalue==NULL || instance->eta==NULL )
     fprintf(stdout, "Unable to allocate memory\n");
@@ -80,11 +80,12 @@ void ISTAinstance_mpi_free(ISTAinstance_mpi* instance)
 
 void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDIFF )
 {
-  // This version of ISTAsolve solve does not allocate any memory
+  // This version of ISTAsolve does not allocate any memory
 
   //Initialize stop values:
   int iter=0;
   float funcdiff=1;
+  int i;
 
   fprintf(stdout, "intial objective function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpi(instance->xcurrent, instance) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 
@@ -114,6 +115,19 @@ void ISTAsolve_lite(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDIFF
 	{
 	  cblas_scopy(instance->rdA + 1, instance->xcurrent, 1, instance->searchPoint, 1);
 	}
+
+      //DEBUGGING
+      /*if(iter <= 1 && instance->lambda >= 16) {
+	fprintf(stdout, "\ngradient: ");
+	for(i=0; i<5; i++) {
+	  fprintf(stdout, "%f ", instance->gradvalue[i]);
+	}
+	fprintf(stdout, "\nsearchpoint: ");
+	for(i=0; i<5; i++) {
+	  fprintf(stdout, "%f ", instance->searchPoint[i]);
+	}
+	fprintf(stdout, "\n");
+	}*/
 
       //UPDATE ITERATOR
       iter++;
@@ -149,10 +163,18 @@ void ISTAbacktrack(ISTAinstance_mpi* instance)
 	         ISTAloss_func_mpi(instance->searchPoint, instance);
     cblas_scopy(instance->rdA + 1, instance->xcurrent, 1, instance->eta, 1);
     cblas_saxpy(instance->rdA + 1, -1.0, instance->searchPoint, 1, instance->eta, 1); //eta now holds "xcurrent - searchpoint"
+
+    //DEBUGGING
+    //fprintf(stdout, "eta[0] %f predifference %f \n", instance->eta[0], difference);
+
     difference -= cblas_sdot(instance->rdA + 1, instance->eta, 1, instance->gradvalue, 1);
     difference -= cblas_sdot(instance->rdA + 1, instance->eta, 1, instance->eta, 1) / (2 * (*(instance->stepsize)) );
 
     numTrials++;
+
+    //DEBUGGING
+    //fprintf(stdout, "xcurrent[0] %f difference %f \n", instance->xcurrent[0], difference);
+
 
   } while(numTrials < 100 && difference > 0);
   
@@ -264,12 +286,13 @@ extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart,
     multiply_ATx(instance->b, instance->eta, instance);
     //i = index of max in absolute value of eta
     //With lambda = eta[i], 0 will be an optimal solution of our optimization
-    CBLAS_INDEX i = cblas_isamax(instance->rdA + 1, instance->eta, 1);
+    //QUESTION: CONSIDER FINAL VALUE OF ETA OR NOT?
+    CBLAS_INDEX i = cblas_isamax(instance->rdA, instance->eta, 1);
     startValue = fabs(instance->eta[i]) / 2.0;
   }
   else if(lambdaStart > 0) {
     startValue = lambdaStart;
-  }
+   }
 
   //Fill in lambdas with exponential path from startValue to lambdaFinish
   if(numLambdas == 1) {

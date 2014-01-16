@@ -2,6 +2,7 @@
 #include<stdlib.h>
 #include<string.h>
 #include<math.h>
+#include<time.h>
 #include<cblas.h>
 #include"istalib.h"
 
@@ -20,7 +21,7 @@ static void writeResults(ISTAinstance* instance, char* outfilename,
 
 int main(int argc, char **argv)
 {
-  //srand(time(NULL));
+  time_t startTime, computationStartTime, endTime;
   int i, j, ldA, rdA, interceptFlag, accel, MAX_ITER, numLambdas;
   float lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
   char regType;
@@ -28,6 +29,9 @@ int main(int argc, char **argv)
   char* bfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
   char* Matrixfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
   char* outfilename = malloc(MAX_FILENAME_SIZE*sizeof(float));
+
+  //START TIMER
+  startTime = time(NULL);
 
   //GET PARAMETERS FROM TXT FILE
   getMasterParams(argv[1], xfilename, bfilename, Matrixfilename, outfilename, &ldA, &rdA,
@@ -76,6 +80,39 @@ int main(int argc, char **argv)
   //IF WE WANT AN INTERCEPT, CHANGE LAST COLUMN OF A TO ALL_ONES
   ISTAaddIntercept(instance);
   
+  //DEBUGGING AREA
+  /*float* ones = calloc(rdA+1, sizeof(float));
+  for(i=0; i< rdA+1; i++) {
+    ones[i] = 1.0;
+  }
+  fprintf(stdout, "meanshifts: ");
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", instance->meanShifts[i]);
+  }
+  fprintf(stdout, "\nscalingFactors: ");
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", instance->scalingFactors[i]);
+  }
+  fprintf(stdout, "\nlambdas: ");
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", lambdas[i]);
+  }
+  fprintf(stdout, "\nA: ");
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", A[i]);
+  }
+  fprintf(stdout, "\nA * ones: ");
+  cblas_sgemv(CblasRowMajor, CblasNoTrans, ldA, rdA+1,
+                1.0, A, rdA+1, ones, 1, 0.0, result, 1);
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", result[i]);
+  }
+  fprintf(stdout, "\n");
+  */
+
+  //TIME UPDATE
+  computationStartTime = time(NULL);
+
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
     instance->lambda = lambdas[j];
@@ -95,6 +132,11 @@ int main(int argc, char **argv)
   //FREE MEMORY
   ISTAinstance_free(instance); free(result); free(lambdas);
   free(xfilename); free(bfilename); free(Matrixfilename);
+
+  //STOP TIME
+  endTime = time(NULL);
+  fprintf(stdout,"Setup took %f seconds and computation took %f seconds\n",
+	  difftime(computationStartTime, startTime), difftime(endTime, computationStartTime));
 
   return 0;
 }

@@ -60,10 +60,14 @@ int main(int argc, char **argv)
 static void master(int nslaves, char* parameterFile)
 {
   //VARIABLE DECLARATIONS
+  time_t startTime, computationStartTime, endTime;
   int rank, i, j, accel, MAX_ITER, slave_ldA, total_ldA, rdA, numLambdas;
   ISTAinstance_mpi* instance;
   float *xvalue, *result, *b, *lambdas, lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
   char regType, xfilename[MAX_FILENAME_SIZE], bfilename[MAX_FILENAME_SIZE], outfilename[MAX_FILENAME_SIZE];
+
+  //START TIMER
+  startTime = time(NULL);
 
   //GET VALUES FROM PARAMETER FILE
   getMasterParams(parameterFile, xfilename, bfilename, outfilename, &slave_ldA, &rdA, 
@@ -123,6 +127,34 @@ static void master(int nslaves, char* parameterFile)
   //CREATE LAMBDA PATH
   calcLambdas(lambdas, numLambdas, lambdaStart, lambdaFinish, instance);
 
+  //DEBUGGING AREA
+  /*float* ones = calloc(rdA+1, sizeof(float));
+  for(i=0; i< rdA+1; i++) {
+    ones[i] = 1.0;
+  }
+  fprintf(stdout, "meanshifts: ");
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", instance->meanShifts[i]);
+  }
+  fprintf(stdout, "\nscalingFactors: ");
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", instance->scalingFactors[i]);
+  }
+  fprintf(stdout, "\nlambdas: ");
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", lambdas[i]);
+  }
+  fprintf(stdout, "\nA * ones: ");
+  multiply_Ax(ones, result, instance);
+  for(i=0; i<5; i++) {
+    fprintf(stdout, "%f ", result[i]);
+  }
+  fprintf(stdout, "\n");
+  */
+  
+  //TIME UPDATE
+  computationStartTime = time(NULL);
+
   //RUN ISTA
   for(j=0; j < numLambdas; j++) {
     instance->lambda = lambdas[j];
@@ -143,6 +175,11 @@ static void master(int nslaves, char* parameterFile)
   //WRITE RESULTS
   writeResults(instance, outfilename, bfilename, lambdas[numLambdas-1]);
 
+  //STOP TIME
+  endTime = time(NULL);
+  fprintf(stdout,"Setup took %f seconds and computation took %f seconds\n",
+	  difftime(computationStartTime, startTime), difftime(endTime, computationStartTime));
+
   //CLOSE THE SLAVE PROCESSES AND FREE MEMORY
   fprintf(stdout, "Closing the program\n");
   for(rank=1; rank <= nslaves; rank++)
@@ -150,7 +187,11 @@ static void master(int nslaves, char* parameterFile)
       MPI_Send(0, 0, MPI_INT, rank, TAG_DIE, MPI_COMM_WORLD);
     }
 
-  free(result); ISTAinstance_mpi_free(instance); free(shifts); free(norms); free(lambdas);
+  free(result); 
+  ISTAinstance_mpi_free(instance); 
+  free(shifts); 
+  free(norms); 
+  free(lambdas);
   return;
 }
 
@@ -211,6 +252,7 @@ static void slave(int myrank, char* parameterFile)
     if(norms[j] > 0.0001)
       cblas_sscal(ldA, 1.0 / norms[j], A + j, rdA + 1);
   }
+
 
   //COMPUTATION LOOP
   while(1)
