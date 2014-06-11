@@ -61,7 +61,7 @@ static void master(int nslaves, char* parameterFile)
 {
   //VARIABLE DECLARATIONS
   time_t startTime, computationStartTime, endTime;
-  int rank, i, j, accel, MAX_ITER, slave_ldA, total_ldA, rdA, numLambdas;
+  int rank, i, j, accel, MAX_ITER, slave_ldA, *slave_ldAs, total_ldA, rdA, numLambdas;
   ISTAinstance_mpi* instance;
   float *xvalue, *result, *b, *lambdas, lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
   char regType, xfilename[MAX_FILENAME_SIZE], bfilename[MAX_FILENAME_SIZE], outfilename[MAX_FILENAME_SIZE];
@@ -73,7 +73,15 @@ static void master(int nslaves, char* parameterFile)
   getMasterParams(parameterFile, xfilename, bfilename, outfilename, &slave_ldA, &rdA, 
 		  &numLambdas, &lambdaStart, &lambdaFinish, &gamma, &step, &regType, &accel, 
 		  &MAX_ITER, &MIN_FUNCDIFF);
-  total_ldA = nslaves*slave_ldA;
+
+  //STORE EACH SLAVE'S INDIVIDUAL LDA AND CALCULATE TOTAL_LDA
+  slave_ldAs = (int*)malloc((nslaves+1)*sizeof(int));
+  int my_ldA = 0;
+  MPI_Gather(&my_ldA, 1, MPI_INT, slave_ldAs, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  total_ldA = 0;
+  for(i=0; i<=nslaves; i++)
+    total_ldA += slave_ldAs[i];
+  fprintf(stdout, "TOTAL LDA IS %d\n", total_ldA);
 
 
   //ALLOCATE MEMORY
@@ -104,7 +112,7 @@ static void master(int nslaves, char* parameterFile)
   */
 
   //CREATE ISTA OBJECT
-  instance = ISTAinstance_mpi_new(slave_ldA, rdA, b, lambdaStart, gamma, 
+  instance = ISTAinstance_mpi_new(slave_ldAs, total_ldA, rdA, b, lambdaStart, gamma, 
 				  accel, regType, xvalue, step,
 				  nslaves, MPI_COMM_WORLD,
 				  TAG_AX, TAG_ATX, TAG_ATAX, TAG_DIE);
@@ -200,47 +208,49 @@ static void master(int nslaves, char* parameterFile)
 
 static void slave(int myrank, char* parameterFile)
 {
-  int i, j, dummyInt, ldA, rdA, interceptFlag;
+  int i, j, dummyInt, target_ldA, my_ldA, rdA, interceptFlag;
   MPI_Status status;
   float *A, *xvalue, *resultVector, *tempHolder, *dummyFloat;
   char matrixfilename[MAX_FILENAME_SIZE];
 
   //GET PARAMETERS FROM THE TEXT FILE
-  getSlaveParams(parameterFile, &ldA, &rdA, &interceptFlag, matrixfilename);
+  getSlaveParams(parameterFile, &target_ldA, &rdA, &interceptFlag, matrixfilename);
 
   //ALLOCATE A, TEMPHOLDER, RESULTVECTOR and XVALUE
-  A = malloc(ldA*(rdA+1)*sizeof(float));
+  A = malloc(target_ldA*(rdA+1)*sizeof(float));
   if(A==NULL)
     fprintf(stdout,"Unable to allocate memory!");
 
-  xvalue = malloc( (ldA+rdA)*sizeof(float) );
-  tempHolder = malloc( (ldA+rdA)*sizeof(float) ); //place holder for intermediate calculations
-  resultVector = malloc( (ldA+rdA)*sizeof(float) );
+  xvalue = malloc( (target_ldA+rdA)*sizeof(float) );
+  tempHolder = malloc( (target_ldA+rdA)*sizeof(float) ); //place holder for intermediate calculations
+  resultVector = malloc( (target_ldA+rdA)*sizeof(float) );
   if(xvalue==NULL || tempHolder==NULL || resultVector==NULL)
     fprintf(stdout,"Unable to allocate memory!");
 
 
-  //FILL A WITH DESIRED VALUES
-  get_dat_matrix(A, ldA, rdA, myrank, matrixfilename, interceptFlag);
-  fprintf(stdout,"A[0] and A[last] for slave %d is %f and %f \n", myrank, A[0], A[ldA*(rdA+1)-1]);
+  //FILL A WITH DESIRED VALUES AND SEND NUMBER OF FILLED ROWS TO MASTER
+  my_ldA=get_dat_matrix(A, target_ldA, rdA, myrank, matrixfilename, interceptFlag);
+  MPI_Gather(&my_ldA, 1, MPI_INT, &dummyInt, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  fprintf(stdout,"Slave %d found %d valid rows: A[0] and A[last] is %f and %f \n", myrank, my_ldA, A[0], A[target_ldA*(rdA+1)-1]);
+  
 
   //CENTER FEATURES
   float* shifts = malloc((rdA+1)*sizeof(float));
-  float* ones = malloc(ldA*sizeof(float));
-  for(i=0; i<ldA; i++)
+  float* ones = malloc(my_ldA*sizeof(float));
+  for(i=0; i<my_ldA; i++)
     ones[i] = 1.0;
-  cblas_sgemv(CblasRowMajor, CblasTrans, ldA, rdA+1, 1.0, A, rdA+1, 
+  cblas_sgemv(CblasRowMajor, CblasTrans, my_ldA, rdA+1, 1.0, A, rdA+1, 
 	      ones, 1, 0.0, shifts, 1); //shifts now holds the sums of the columns of A
   MPI_Reduce(shifts, dummyFloat, rdA, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
  
   MPI_Bcast(shifts, rdA, MPI_FLOAT, 0, MPI_COMM_WORLD); //shifts now holds the total means of the columns of A
-  for(i=0; i<ldA; i++) { //Now we substract shifts from each row of A
+  for(i=0; i<my_ldA; i++) { //Now we substract shifts from each row of A
     cblas_saxpy(rdA, -1.0, shifts, 1, &A[i*(rdA+1)], 1);
   }
 
   //SCALE FEATURES
   float* norms = calloc(rdA, sizeof(float));
-  for(i=0; i<ldA; i++) {
+  for(i=0; i<my_ldA; i++) {
     for(j=0; j<rdA; j++) {
 	norms[j] += pow( A[i*(rdA+1) + j], 2);
     }
@@ -250,7 +260,7 @@ static void slave(int myrank, char* parameterFile)
   MPI_Bcast(norms, rdA, MPI_FLOAT, 0, MPI_COMM_WORLD); //norms now holds the 2-norms of the total columns of A
   for(j=0; j<rdA; j++) {
     if(norms[j] > 0.0001)
-      cblas_sscal(ldA, 1.0 / norms[j], A + j, rdA + 1);
+      cblas_sscal(my_ldA, 1.0 / norms[j], A + j, rdA + 1);
   }
 
 
@@ -273,11 +283,11 @@ static void slave(int myrank, char* parameterFile)
 	  MPI_Bcast(xvalue, rdA+1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 	  //Multiply: resultVector = A*xvalue
-	  cblas_sgemv(CblasRowMajor, CblasNoTrans, ldA, rdA+1, 1.0, A, rdA+1, 
+	  cblas_sgemv(CblasRowMajor, CblasNoTrans, my_ldA, rdA+1, 1.0, A, rdA+1, 
 		      xvalue, 1, 0.0, resultVector, 1);
 
 	  //Gather xvalues
-	  MPI_Gatherv(resultVector, ldA, MPI_FLOAT, dummyFloat, &dummyInt, &dummyInt, MPI_FLOAT, 0, MPI_COMM_WORLD);
+	  MPI_Gatherv(resultVector, my_ldA, MPI_FLOAT, dummyFloat, &dummyInt, &dummyInt, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 	  
 	}
@@ -288,10 +298,10 @@ static void slave(int myrank, char* parameterFile)
 	  
 	  //Get xvalue
 	  MPI_Scatterv(dummyFloat, &dummyInt, &dummyInt, MPI_FLOAT, 
-		       xvalue, ldA, MPI_FLOAT, 0, MPI_COMM_WORLD);
+		       xvalue, my_ldA, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 	  //Multiply: resultVector = A'*xvalue
-	  cblas_sgemv(CblasRowMajor, CblasTrans, ldA, rdA+1, 1.0, A, rdA+1, 
+	  cblas_sgemv(CblasRowMajor, CblasTrans, my_ldA, rdA+1, 1.0, A, rdA+1, 
 		      xvalue, 1, 0.0, resultVector, 1);
 
 	  //Sum resultVectors to get final result
@@ -307,10 +317,10 @@ static void slave(int myrank, char* parameterFile)
 	  MPI_Bcast(xvalue, rdA+1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 	  //Multiply: tempHolder = A*xvalue
-	  cblas_sgemv(CblasRowMajor, CblasNoTrans, ldA, rdA+1, 1.0, A, rdA+1, 
+	  cblas_sgemv(CblasRowMajor, CblasNoTrans, my_ldA, rdA+1, 1.0, A, rdA+1, 
 		      xvalue, 1, 0.0, tempHolder, 1);
 	  //Multiply: resultVector = A^t * tempHolder
-	  cblas_sgemv(CblasRowMajor, CblasTrans, ldA, rdA+1, 1.0, A, rdA+1,
+	  cblas_sgemv(CblasRowMajor, CblasTrans, my_ldA, rdA+1, 1.0, A, rdA+1,
 		      tempHolder, 1, 0.0, resultVector, 1);
 
 	  //Gather and sum results

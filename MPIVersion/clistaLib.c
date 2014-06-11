@@ -5,7 +5,7 @@
 #include"mpi.h"
 #include"clistaLib.h"
 
-ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float lambda, 
+ISTAinstance_mpi* ISTAinstance_mpi_new(int* slave_ldAs, int ldA, int rdA, float* b, float lambda, 
 				       float gamma, int acceleration, char regressionType, 
 				       float* xvalue, float step,
 				       int nslaves, MPI_Comm comm, int ax, int atx, int atax, int die)
@@ -15,8 +15,8 @@ ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float l
   if ( instance==NULL )
     fprintf(stdout, "Unable to allocate memory\n");
 
-  instance->slave_ldA = slave_ldA;
-  instance->ldA = slave_ldA * nslaves;
+  instance->slave_ldAs = slave_ldAs;
+  instance->ldA = ldA;
   instance->rdA = rdA;
   instance->b = b;
   instance->lambda = lambda;
@@ -55,7 +55,16 @@ ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float l
   if ( instance->meanShifts==NULL || instance->scalingFactors==NULL )
     fprintf(stdout, "Unable to allocate memory\n");
 
-  fprintf(stdout,"Created ISTA instance with parameters:\n nslaves: %d slave_ldA: %d ldA: %d rdA: %d \n lambda: %f gamma: %f accel: %d regType: %c step: %f  \n b[0]: %f b[last]: %f \n x[0]: %f x[last]: %f \n", nslaves, slave_ldA, instance->ldA, rdA, lambda, gamma, acceleration,
+  instance->slave_ldAs_displacements = malloc((nslaves+1)*sizeof(int));
+  if ( instance->slave_ldAs_displacements==NULL )
+    fprintf(stdout, "Unable to allocate memory\n");
+  //FILL slave_ldAs_displacements
+  int i;
+  instance->slave_ldAs_displacements[0]=0;
+  for(i=1; i<=nslaves; i++)
+    instance->slave_ldAs_displacements[i] = instance->slave_ldAs_displacements[i-1] + instance->slave_ldAs[i-1];
+
+  fprintf(stdout,"Created ISTA instance with parameters:\n nslaves: %d ldA: %d rdA: %d \n lambda: %f gamma: %f accel: %d regType: %c step: %f  \n b[0]: %f b[last]: %f \n x[0]: %f x[last]: %f \n", nslaves, instance->ldA, rdA, lambda, gamma, acceleration,
 	  regressionType, step, b[0], b[instance->ldA-1], xvalue[0], xvalue[rdA-1]);
 
   return instance;
@@ -74,6 +83,8 @@ void ISTAinstance_mpi_free(ISTAinstance_mpi* instance)
   free(instance->xcurrent);
   free(instance->stepsize); 
   free(instance-> b);
+  free(instance->slave_ldAs);
+  free(instance->slave_ldAs_displacements);
   free(instance);
 }
 
@@ -311,15 +322,6 @@ extern void multiply_Ax(float* xvalue, float* result, ISTAinstance_mpi* instance
 {
   int rank;
   float* dummyFloat;
-  int* counts = calloc(instance->nslaves + 1, sizeof(int));
-  int* displacements = calloc(instance->nslaves + 1, sizeof(int));
-  if(counts==NULL || displacements==NULL)
-    fprintf(stdout,"Unable to allocate memory!");
-  for(rank=1; rank <= instance->nslaves; rank++)
-    {
-      counts[rank] = instance->slave_ldA;
-      displacements[rank] = instance->slave_ldA*(rank-1);
-    }
 
   //TELL SLAVES WE ARE GOING TO MULTIPLY A*xvalue
   for(rank=1; rank <= instance->nslaves; rank++)
@@ -333,9 +335,8 @@ extern void multiply_Ax(float* xvalue, float* result, ISTAinstance_mpi* instance
   //SLAVES MULTIPLY.....
 
   //ASSEMBLES SEGMENTS OF RESULT FROM SLAVES INTO FINAL RESULT
-  MPI_Gatherv(dummyFloat, 0, MPI_FLOAT, result, counts, displacements, MPI_FLOAT, 0, instance->comm);
-
-  free(counts); free(displacements);
+  MPI_Gatherv(dummyFloat, 0, MPI_FLOAT, result, instance->slave_ldAs, instance->slave_ldAs_displacements, 
+	      MPI_FLOAT, 0, instance->comm);
 
   return;
 }
@@ -345,15 +346,8 @@ extern void multiply_ATx(float* xvalue, float* result, ISTAinstance_mpi* instanc
 {
   int rank;
   float* temp = calloc(instance->rdA+1, sizeof(float));
-  int* counts = calloc(instance->nslaves + 1, sizeof(int));
-  int* displacements = calloc(instance->nslaves + 1, sizeof(int));
-  if(counts==NULL || displacements==NULL)
+  if(temp==NULL)
     fprintf(stdout,"Unable to allocate memory!");
-  for(rank=1; rank <= instance->nslaves; rank++)
-    {
-      counts[rank] = instance->slave_ldA;
-      displacements[rank] = instance->slave_ldA*(rank-1);
-    }
 
   //Tell slaves we are going to multiply A' * xvalue
   for(rank=1; rank <= instance->nslaves; rank++)
@@ -362,14 +356,15 @@ extern void multiply_ATx(float* xvalue, float* result, ISTAinstance_mpi* instanc
     }
 
   //Split xvalue into subvectors and distribute among the slaves
-  MPI_Scatterv(xvalue, counts, displacements, MPI_FLOAT, temp, 0, MPI_FLOAT, 0, instance->comm);
+  MPI_Scatterv(xvalue, instance->slave_ldAs, instance->slave_ldAs_displacements, 
+	       MPI_FLOAT, temp, 0, MPI_FLOAT, 0, instance->comm);
 
   //Slaves multiply....
 
   //Sum up the results of each slave multiplication
   MPI_Reduce(temp, result, instance->rdA + 1, MPI_FLOAT, MPI_SUM, 0, instance->comm);
 
-  free(temp); free(counts); free(displacements);
+  free(temp);
 
   return;
 }
@@ -402,7 +397,7 @@ extern void multiply_ATAx(float* xvalue, float* result, ISTAinstance_mpi* instan
   return;
 }
 
-extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank, 
+extern int get_dat_matrix(float* A, int ldA, int rdA, int myrank, 
 			   char* filename, int interceptFlag)
 {
   int numRowsSkip = (myrank-1)*ldA;
@@ -414,33 +409,46 @@ extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank,
     fprintf(stderr, "File Open Failed on process %d!\n", myrank);
 
   //Skip to appropriate place in file
-  char c;
+  int c;
   int count=0;
-  while( count < numRowsSkip) {
-    do {
-      c = getc(matrixfile);
-    } while( c != '\n');
-    count++;
-  }
+  do {
+    c = getc(matrixfile);
+    if(c == '\n') count++;
+  } while( c != EOF && count < numRowsSkip);
+  //SKIP FOLLOWING WHITESPACE IN THE FILE
+  fscanf(matrixfile, " ");
+
+  //OUTPUT ERROR MESSAGE IF WE HAVE REACHED EOF BEFORE READING ANY DATA
+  if(feof(matrixfile))
+    fprintf(stderr, "Slave %d reached EOF before reading any matrix values\n", myrank);
 
   //READ IN MATRIX DATA, ADDING A FINAL COLUMN THAT IS ALL-ONE IF INTERCEPTFLAG IS TRUE
   //AND ALL-ZERO IF INTERCEPTFLAG IS FALSE
   float value, intercept;
-  int row, col;
+  int row, col, numValidRows = 0;
 
   if(interceptFlag)
     intercept=1.0;
   else
     intercept=0.0;
 
-  //fprintf(stdout, "\nProcess %d getting matrix entries\n", myrank);
+  //LOOP THROUGH ROWS OF A
   for(row=0; row<ldA; row++) {
+    //ONLY SET INTERCEPT AND INCREMENT NUMVALIDROWS IF WE HAVE NOT REACHED THE EOF
+    if(feof(matrixfile))
+      A[row*(rdA+1) + rdA] = 0.0;
+    else {
+      A[row*(rdA+1) + rdA] = intercept;
+      numValidRows++;
+    }
+    //NOW FILL ENTRIES OF THIS PARTICULAR ROW
     for(col=0; col<rdA; col++) {
-      fscanf(matrixfile, " %32f , ", &value);
-      A[row*(rdA+1) + col] = value;
+      if(fscanf(matrixfile, " %32f , ", &value)==1)
+	A[row*(rdA+1) + col] = value;
+      else
+	A[row*(rdA+1) + col] = 0.0;
       //fscanf(matrixfile, " , ");
     }
-    A[row*(rdA+1) + rdA] = intercept;
   }	 
 
   fclose(matrixfile);
@@ -455,5 +463,5 @@ extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank,
   //  A[i] =  (float)rand()/(1.0 * (float)RAND_MAX);
   //}
 
-  return;
+  return numValidRows;
 }

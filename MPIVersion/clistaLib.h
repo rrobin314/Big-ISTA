@@ -2,7 +2,8 @@ typedef struct ISTAinstance_mpi {
   // PARAMETERS
   // NOTE: A is now stored with the slaves, only the dimensions are here
   int ldA; //left dimension of A
-  int slave_ldA; //left dimension of each smaller A stored on cluster nodes
+  int* slave_ldAs; //vector containing ldA for each slave's piece of A
+  int* slave_ldAs_displacements; //transformation of above vector used in MPI_Gatherv
   int rdA; //right dimension of A
   float* b;
   float lambda; //how much weight we give to the 1-norm
@@ -41,7 +42,7 @@ typedef struct ISTAinstance_mpi {
 // stepsize, xprevious, searchPoint, gradvalue, eta, meanShifts, and scalingFactors.
 // Finally, sets searchPoint equal to xvalue.
 extern 
-ISTAinstance_mpi* ISTAinstance_mpi_new(int slave_ldA, int rdA, float* b, float lambda, 
+ISTAinstance_mpi* ISTAinstance_mpi_new(int* slave_ldAs, int ldA, int rdA, float* b, float lambda, 
 				       float gamma, int acceleration, char regressionType, 
 				       float* xvalue, float step,
 				       int nslaves, MPI_Comm comm, int ax, int atx, int atax, int die);
@@ -111,5 +112,5 @@ extern void multiply_ATAx(float* xvalue, float* result, ISTAinstance_mpi* instan
 //
 //A is located by skipping the first (myrank-1)*ldA rows in the file and
 //starting input of A from that point.
-extern void get_dat_matrix(float* A, int ldA, int rdA, int myrank, 
+extern int get_dat_matrix(float* A, int ldA, int rdA, int myrank, 
 			   char* filename, int interceptFlag);
