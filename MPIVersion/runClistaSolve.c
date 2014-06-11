@@ -22,7 +22,7 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
 			    int* MAX_ITER, float* MIN_FUNCDIFF);
-static void getVector(float* b, int lengthb, char* bfilename);
+static int getVector(float* b, int lengthb, char* bfilename);
 static void writeResults(ISTAinstance_mpi* instance, char* outfilename, 
 			 char* bfilename, float finalLambda);
 
@@ -61,7 +61,7 @@ static void master(int nslaves, char* parameterFile)
 {
   //VARIABLE DECLARATIONS
   time_t startTime, computationStartTime, endTime;
-  int rank, i, j, accel, MAX_ITER, *slave_ldAs, total_ldA, rdA, numLambdas;
+  int rank, i, j, accel, MAX_ITER, *slave_ldAs, total_ldA, rdA, numLambdas, error;
   ISTAinstance_mpi* instance;
   float *xvalue, *result, *b, *lambdas, lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
   char regType, xfilename[MAX_FILENAME_SIZE], bfilename[MAX_FILENAME_SIZE], outfilename[MAX_FILENAME_SIZE];
@@ -89,18 +89,30 @@ static void master(int nslaves, char* parameterFile)
   result = malloc((total_ldA+rdA)*sizeof(float));
   b      = malloc((total_ldA)*sizeof(float));
   lambdas = malloc(numLambdas*sizeof(float));
-  if(xvalue==NULL || result==NULL || b==NULL)
+  if(xvalue==NULL || result==NULL || b==NULL || lambdas==NULL)
     fprintf(stdout,"Unable to allocate memory!");
   
 
   //ASSIGN VALUES TO XVALUE AND B
+  error=1;
   if(strcmp(xfilename, "zeros")==0){
     //do nothing - calloc already initialized xvalue to 0
   }
   else 
-    getVector(xvalue, rdA, xfilename);
+    error *= getVector(xvalue, rdA, xfilename);
+  error *= getVector(b, total_ldA, bfilename);
 
-  getVector(b, total_ldA, bfilename);
+  //CHECK FOR FILEOPEN ERRORS; IF ANY PRESENT END PROGRAM
+  for(i=1; i<=nslaves; i++)
+    if(slave_ldAs[i] == -1) error=0;
+  MPI_Bcast(&error, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(error==0) {
+    free(result);
+    free(xvalue);
+    free(b);
+    free(lambdas);
+    return;
+  }
   
   //PRINT INPUTS
   /*  fprintf(stdout, "Here's x:\n");
@@ -210,7 +222,7 @@ static void master(int nslaves, char* parameterFile)
 
 static void slave(int myrank, char* parameterFile)
 {
-  int i, j, dummyInt, target_ldA, my_ldA, rdA, interceptFlag;
+  int i, j, dummyInt, target_ldA, my_ldA, rdA, interceptFlag, error;
   MPI_Status status;
   float *A, *xvalue, *resultVector, *tempHolder, *dummyFloat;
   char matrixfilename[MAX_FILENAME_SIZE];
@@ -233,6 +245,14 @@ static void slave(int myrank, char* parameterFile)
   //FILL A WITH DESIRED VALUES AND SEND NUMBER OF FILLED ROWS TO MASTER
   my_ldA=get_dat_matrix(A, target_ldA, rdA, myrank, matrixfilename, interceptFlag);
   MPI_Gather(&my_ldA, 1, MPI_INT, &dummyInt, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&error, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(error==0) { //if there were file open errors, end program
+    free(A);
+    free(xvalue);
+    free(tempHolder);
+    free(resultVector);
+    return;
+  }
   fprintf(stdout,"Slave %d found %d valid rows: A[0] is %f \n", myrank, my_ldA, A[0] );
   
 
@@ -384,11 +404,13 @@ static void getSlaveParams(char* parameterFile, int* ldA, int* rdA, int* interce
   return;
 }
 
-static void getVector(float* b, int lengthb, char* bfilename) {
+static int getVector(float* b, int lengthb, char* bfilename) {
   FILE *paramFile;
   paramFile = fopen(bfilename, "r");
-  if(paramFile == NULL)
-    fprintf(stderr, "VectorFile Open Failed!\n");
+  if(paramFile == NULL) {
+    fprintf(stderr, "File open failed for %s! Exiting program...\n", bfilename);
+    return 0;
+  }
 
   int i;
   float value;
@@ -398,7 +420,7 @@ static void getVector(float* b, int lengthb, char* bfilename) {
   }
 
   fclose(paramFile);
-  return;
+  return 1;
 }
 
 static void writeResults(ISTAinstance_mpi* instance, char* outfilename, 

@@ -406,8 +406,10 @@ extern int get_dat_matrix(float* A, int ldA, int rdA, int myrank,
   //Open the file
   FILE *matrixfile;
   matrixfile = fopen(filename, "r");
-  if(matrixfile == NULL)
-    fprintf(stderr, "File Open Failed on process %d!\n", myrank);
+  if(matrixfile == NULL) {
+    fprintf(stderr, "File %s open failed on process %d!\n", filename, myrank);
+    return -1;
+  }
 
   //Skip to appropriate place in file
   int c;
