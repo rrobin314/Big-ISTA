@@ -64,7 +64,8 @@ ISTAinstance_mpi* ISTAinstance_mpi_new(int* slave_ldAs, int ldA, int rdA, float*
   for(i=1; i<=nslaves; i++)
     instance->slave_ldAs_displacements[i] = instance->slave_ldAs_displacements[i-1] + instance->slave_ldAs[i-1];
 
-  fprintf(stdout,"Created ISTA instance with parameters:\n nslaves: %d ldA: %d rdA: %d \n lambda: %f gamma: %f accel: %d regType: %c step: %f  \n b[0]: %f b[last]: %f \n x[0]: %f x[last]: %f \n", nslaves, instance->ldA, rdA, lambda, gamma, acceleration,
+  fprintf(stdout,"Created ISTA instance with parameters:\n nslaves: %d ldA: %d rdA: %d \n lambda: %f gamma: %f accel: %d regType: %c step: %f  \n b[0]: %f b[last]: %f \n x[0]: %f x[last]: %f \n", 
+	  nslaves, instance->ldA, rdA, lambda, gamma, acceleration,
 	  regressionType, step, b[0], b[instance->ldA-1], xvalue[0], xvalue[rdA-1]);
 
   return instance;

@@ -18,7 +18,7 @@ static void slave(int myrank, char* parameterFile);
 static void getSlaveParams(char* parameterFile, int* ldA, int* rdA, int* interceptFlag, 
 			   char* matrixfilename);
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, char* outfilename, 
-			    int* slave_ldA, int* rdA, 
+			    int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
 			    int* MAX_ITER, float* MIN_FUNCDIFF);
@@ -61,7 +61,7 @@ static void master(int nslaves, char* parameterFile)
 {
   //VARIABLE DECLARATIONS
   time_t startTime, computationStartTime, endTime;
-  int rank, i, j, accel, MAX_ITER, slave_ldA, *slave_ldAs, total_ldA, rdA, numLambdas;
+  int rank, i, j, accel, MAX_ITER, *slave_ldAs, total_ldA, rdA, numLambdas;
   ISTAinstance_mpi* instance;
   float *xvalue, *result, *b, *lambdas, lambdaStart, lambdaFinish, gamma, step, MIN_FUNCDIFF;
   char regType, xfilename[MAX_FILENAME_SIZE], bfilename[MAX_FILENAME_SIZE], outfilename[MAX_FILENAME_SIZE];
@@ -70,7 +70,7 @@ static void master(int nslaves, char* parameterFile)
   startTime = time(NULL);
 
   //GET VALUES FROM PARAMETER FILE
-  getMasterParams(parameterFile, xfilename, bfilename, outfilename, &slave_ldA, &rdA, 
+  getMasterParams(parameterFile, xfilename, bfilename, outfilename, &rdA, 
 		  &numLambdas, &lambdaStart, &lambdaFinish, &gamma, &step, &regType, &accel, 
 		  &MAX_ITER, &MIN_FUNCDIFF);
 
@@ -94,9 +94,13 @@ static void master(int nslaves, char* parameterFile)
   
 
   //ASSIGN VALUES TO XVALUE AND B
-  //For now we just assign x0 to be all zeros (see calloc above)  
+  if(strcmp(xfilename, "zeros")==0){
+    //do nothing - calloc already initialized xvalue to 0
+  }
+  else 
+    getVector(xvalue, rdA, xfilename);
+
   getVector(b, total_ldA, bfilename);
-  //getVector(xvalue, rdA, xfilename);
   
   //PRINT INPUTS
   /*  fprintf(stdout, "Here's x:\n");
@@ -168,8 +172,6 @@ static void master(int nslaves, char* parameterFile)
     instance->lambda = lambdas[j];
 
     ISTAsolve_lite(instance, MAX_ITER, MIN_FUNCDIFF);
-    //multiply_Ax(xvalue, rdA, slave_ldA, result, nslaves, MPI_COMM_WORLD, TAG_AX);
-    //multiply_ATx(yvalue, total_ldA, slave_ldA, rdA, result, nslaves, MPI_COMM_WORLD, TAG_ATX);
     fprintf(stdout, "\n");
   }
 
@@ -231,7 +233,7 @@ static void slave(int myrank, char* parameterFile)
   //FILL A WITH DESIRED VALUES AND SEND NUMBER OF FILLED ROWS TO MASTER
   my_ldA=get_dat_matrix(A, target_ldA, rdA, myrank, matrixfilename, interceptFlag);
   MPI_Gather(&my_ldA, 1, MPI_INT, &dummyInt, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  fprintf(stdout,"Slave %d found %d valid rows: A[0] and A[last] is %f and %f \n", myrank, my_ldA, A[0], A[target_ldA*(rdA+1)-1]);
+  fprintf(stdout,"Slave %d found %d valid rows: A[0] is %f \n", myrank, my_ldA, A[0] );
   
 
   //CENTER FEATURES
@@ -336,7 +338,7 @@ static void slave(int myrank, char* parameterFile)
 
 
 static void getMasterParams(char* parameterFile, char* xfilename, char* bfilename, char* outfilename, 
-			    int* slave_ldA, int* rdA, 
+			    int* rdA, 
 			    int* numLambdas, float* lambdaStart, float* lambdaFinish, 
 			    float* gamma, float* step, char* regType, int* accel, 
 			    int* MAX_ITER, float* MIN_FUNCDIFF) {
@@ -349,7 +351,6 @@ static void getMasterParams(char* parameterFile, char* xfilename, char* bfilenam
   fscanf(paramFile, "FileNameForX0 : %63s", xfilename);
   fscanf(paramFile, " FileNameForB : %63s", bfilename);
   fscanf(paramFile, " OutputFile : %63s", outfilename);
-  fscanf(paramFile, " numRowsForSlave : %d", slave_ldA);
   fscanf(paramFile, " numCols : %d", rdA);
   fscanf(paramFile, " numLambdas : %d %*128[^\n]", numLambdas);
   fscanf(paramFile, " lambdaStart : %16f %*128[^\n]", lambdaStart);
