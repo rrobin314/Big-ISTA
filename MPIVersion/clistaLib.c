@@ -300,7 +300,7 @@ extern void calcLambdas(float* lambdas, int numLambdas, float lambdaStart,
     //With lambda = eta[i], 0 will be an optimal solution of our optimization
     //QUESTION: CONSIDER FINAL VALUE OF ETA OR NOT?
     CBLAS_INDEX i = cblas_isamax(instance->rdA, instance->eta, 1);
-    startValue = fabs(instance->eta[i]) / 2.0;
+    startValue = fabs(instance->eta[i]) * 0.9;
   }
   else if(lambdaStart > 0) {
     startValue = lambdaStart;
