@@ -82,7 +82,7 @@ static void master(int nslaves, char* parameterFile)
   total_ldA = 0;
   for(i=0; i<=nslaves; i++)
     total_ldA += slave_ldAs[i];
-  fprintf(stdout, "TOTAL LDA IS %d\n", total_ldA);
+  //fprintf(stdout, "TOTAL LDA IS %d\n", total_ldA);
 
 
   //ALLOCATE MEMORY
@@ -204,7 +204,10 @@ static void master(int nslaves, char* parameterFile)
       instance->lambda = lambdas[j];
       //RUN ISTA ON THIS PARTICULAR LAMBDA AND FOLD
       ISTAsolve_liteCV(instance, MAX_ITER, MIN_FUNCDIFF);
-      fprintf(stdout, "\n");
+      fprintf(stdout, "fold %d and lambda %f - trainingerror: %f, testerror: %f \n",
+	      i, lambdas[j], 
+	      ISTAloss_func_mpiCV(instance->xcurrent, instance, 0) * instance->numFolds / (float) (instance->numFolds - 1) / (float) instance->ldA,
+	      ISTAloss_func_mpiCV(instance->xcurrent, instance, 1) * instance->numFolds / (float) instance->ldA);
 
       //ADD TEST ERROR TO 'meanTotalErrors' VECTOR
       meanTotalErrors[j] += ISTAloss_func_mpiCV(instance->xcurrent, instance, 1) / (float)instance->ldA;

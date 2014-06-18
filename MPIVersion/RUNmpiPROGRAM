@@ -1,0 +1,14 @@
+#!/bin/tcsh
+# #1 is the number of processes to run MPI with
+# #2 is the mpi executable file
+# #3 is the master parameters
+# #4 is the slave parameters
+
+#$ -cwd
+#$ -j y
+#$ -pe orte 9
+#$ -R y
+
+module load openmpi-x86_64
+# mpiexec -mca orte_base_user_debugger ~/mpiP-3.4/bin/mpirun-mpip -debug -np $argv[1] $argv[2] $argv[3] $argv[4]
+mpirun -np $argv[1] $argv[2] $argv[3] $argv[4]

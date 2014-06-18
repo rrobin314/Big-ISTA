@@ -110,7 +110,7 @@ void ISTAsolve_liteCV(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDI
   float funcdiff=1;
   int i;
 
-  fprintf(stdout, "intial objective function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpiCV(instance->xcurrent, instance, 0) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
+  //fprintf(stdout, "intial objective function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpiCV(instance->xcurrent, instance, 0) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 
   while(iter < MAX_ITER && funcdiff > MIN_FUNCDIFF)
     {
@@ -156,8 +156,8 @@ void ISTAsolve_liteCV(ISTAinstance_mpi* instance, int MAX_ITER, float MIN_FUNCDI
       iter++;
     }
 
-  fprintf(stdout, "iter: %d funcdiff: %f\n", iter, funcdiff);
-  fprintf(stdout, "final objective function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpiCV(instance->xcurrent, instance, 0) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
+  //fprintf(stdout, "iter: %d funcdiff: %f\n", iter, funcdiff);
+  //fprintf(stdout, "final objective function value for lambda %f: %f\n", instance->lambda, ISTAloss_func_mpiCV(instance->xcurrent, instance, 0) + instance->lambda * cblas_sasum(instance->rdA, instance->xcurrent, 1) );
 
 }
 
@@ -332,9 +332,6 @@ extern void calcFolds(ISTAinstance_mpi* instance) {
     value = i % instance->numFolds;
     instance->folds[ randPerm[i] ] = value;
   }
-
-  for(i=0; i < instance->ldA; i++)
-    fprintf(stdout, "folds at %d: %d\n", i, instance->folds[i]);
 
 }
 
