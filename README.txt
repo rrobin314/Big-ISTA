@@ -1,3 +1,2 @@
-Big-ISTA is an attempt to implement efficient and parallel versions of the ISTA and FISTA algorithms in C.  For information on these algorithms, see the paper "A Fast Iterative Shrinkage-Thresholding Algorithm for Linear Inverse Problems" by Beck and Teboulle.
-
-More to come....
+This package has been moved to the project at:
+https://github.com/rrobin314/crista
